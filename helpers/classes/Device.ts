@@ -1,9 +1,7 @@
-import { Process } from "./Process";
-
 export type DeviceType = {
   id: string;
   name: string;
-  process?: Process;
+  process: { username: string, configFile: string } | null;
   battery: string;
 }
 
@@ -11,9 +9,9 @@ export class Device {
   private _id: string;
   private _name: string;
   private _battery: string;
-  private _process: Process | undefined;
+  private _process: { username: string, configFile: string } | null;
 
-  constructor(id: string, name: string, battery: string, process?: Process) {
+  constructor(id: string, name: string, battery: string, process: { username: string, configFile: string } | null) {
     this._id = id;
     this._name = name;
     this._battery = battery;
@@ -27,7 +25,7 @@ export class Device {
     return this._battery;
   }
 
-  get process(): Process | undefined {
+  get process(): { username: string, configFile: string } | null {
     return this._process;
   }
   get name(): string {

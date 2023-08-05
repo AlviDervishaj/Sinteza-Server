@@ -11,7 +11,7 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: ["http://localhost:3000", "http://localhost:3001"],
   }
 });
 
@@ -19,7 +19,6 @@ const _processes = new Processes();
 const _devices = new Devices();
 
 io.on('connection', (socket: Socket) => {
-  // join processes room to get streamed data
   _processes.add(socket);
   _devices.add(socket);
 });

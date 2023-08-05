@@ -129,9 +129,17 @@ export type ApiDevices = {
   battery: string;
 }[];
 
+
+export type DeviceSkeleton = {
+  _id: string;
+  _name: string;
+  _process: { username: string, configFile: string } | null;
+  _battery: string;
+}
+
 export type BotFormData = {
   username: string;
-  device: { id: string, battery: string, name: string };
+  device: DeviceSkeleton;
   password?: string;
   jobs: Jobs,
   config_name?: ConfigNames,
@@ -482,6 +490,8 @@ export interface NotScheduledType {
   scheduled: false,
   startsAt: undefined,
   formData: BotFormData,
+  startTime: undefined,
+  status: "RUNNING" | "WAITING" | "STOPPED" | "FINISHED",
   membership: "FREE" | "PREMIUM",
   jobs: Jobs
 }
@@ -489,6 +499,8 @@ export interface NotScheduledType {
 export interface ScheduledType {
   scheduled: string,
   startsAt: number,
+  startTime: number,
+  status: "RUNNING" | "WAITING" | "STOPPED" | "FINISHED",
   formData: BotFormData,
   membership: "FREE" | "PREMIUM",
   jobs: Jobs

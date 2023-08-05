@@ -9,7 +9,8 @@ import {
   SessionProfile,
   SessionProfileSkeleton,
   Jobs,
-  ConfigNames
+  ConfigNames,
+  DeviceSkeleton
 } from "../Types";
 let id = 0;
 
@@ -35,7 +36,7 @@ export class Process {
   private _cmd: ChildProcessWithoutNullStreams | undefined;
 
   constructor(
-    device: { id: string, name: string, battery: string },
+    device: DeviceSkeleton,
     username: string,
     membership: "PREMIUM" | "FREE",
     status: "RUNNING" | "WAITING" | "STOPPED" | "FINISHED",
@@ -55,7 +56,7 @@ export class Process {
       username,
       membership
     }
-    this._device = { id: device.id, name: device.name, battery: device.battery, process: { username: this.username, configFile: this.configFile } };
+    this._device = { id: device._id, name: device._name, battery: device._battery, process: { username: this.username, configFile: this.configFile } };
     this._status = status;
     this._result = result;
     this._total = total;

@@ -3,15 +3,14 @@ import sys
 import json
 import collections
 import ruamel.yaml
-import yaml as y
 from ruamel.yaml.comments import CommentedSeq
-from time import sleep
 
 yaml = ruamel.yaml.YAML()
 yaml.preserve_quotes = True
 
 
-LIST_OF_FILES = ['blacklist.txt', 'config.yml', 'comments_list.txt', 'filters.yml', 'pm_list.txt', 'telegram.yml', 'whitelist.txt']
+LIST_OF_FILES = ['blacklist.txt', 'config.yml', 'comments_list.txt',
+                 'filters.yml', 'pm_list.txt', 'telegram.yml', 'whitelist.txt']
 
 AVAILABLE_FILES = []
 
@@ -21,14 +20,16 @@ command = "copy" if sys.platform.startswith(
 
 def compare(x, y): return collections.Counter(x) == collections.Counter(y)
 
+
 def filter_substring(array: list[str], substring: str):
     filtered_array: list[str] = []
     for string in array:
-        if substring not in string: 
+        if substring not in string:
             filtered_array.append(string)
-        else: 
+        else:
             continue
     return filter_substring
+
 
 def _print(value: str):
     print(value, flush=True)
@@ -36,22 +37,23 @@ def _print(value: str):
 
 botConfig = sys.stdin.read()
 customConfig = json.loads(botConfig)
+_print(f"CUSTOM CONFIG : {customConfig}")
 if not customConfig['username']:
     _print("Please enter a valid instagram username")
-    exit(5)
+    exit()
 if not customConfig['device']:
     _print("Please enter a valid device.")
-    exit(5)
+    exit()
 
 # format as list
 if customConfig['blogger-followers']:
     customConfig['blogger-followers'] = \
-            customConfig['blogger-followers'][0].split(",")
+        customConfig['blogger-followers'][0].split(",")
 # format as list
 if customConfig['hashtag-likers-top']:
     customConfig['hashtag-likers-top'] = \
         customConfig['hashtag-likers-top'][0].split(",")
-    
+
 #  default working hours
 if type(customConfig['working-hours']) == list and \
         len(customConfig['working-hours']) == 0:
@@ -62,10 +64,12 @@ elif customConfig['working-hours']:
 
 jobs = customConfig.pop("jobs", "follow")
 
-def clear_contents_of_file(file_path: str):
-    with open(file_path, "w") as f:
-        f.seek(0)
-        f.write("")
+
+#   def clear_contents_of_file(file_path: str):
+#       with open(file_path, "w") as f:
+#           f.seek(0)
+#           f.write("")
+
 
 def get_commented_keys():
     '''
@@ -90,51 +94,54 @@ def get_commented_keys():
     else:
         return ["hashtag-likers-top", "total-unfollows-limit", "unfollow-non-followers", "unfollow", "unfollow-any", "unfollow-any-non-followers", "unfollow-any-followers", "total-unfollows-limit"]
 
-def create_default_configs(username):
-    config_names = ['config2.yml', 'config3.yml']
-    default_path = os.path.join(os.path.dirname(os.path.dirname(
-        __file__)), 'accounts', username, 'config.yml')
-    
-    for config_name in config_names:
-        config_path = os.path.join(os.path.dirname(os.path.dirname(
-            __file__)), 'accounts', username, config_name)
-        if (config_name not in AVAILABLE_FILES):
-            _print(
-                f"[INFO] Copying file from  : {default_path} to {config_path}")
-            # copy config files to that dir
-            os.popen(f'{command} {default_path} {config_path}')
-        else:
-            _print(f"[INFO] File {config_name} already exists.")
+
+#   def create_default_configs(username):
+#   config_names = ['config2.yml', 'config3.yml']
+#   default_path = os.path.join(os.path.dirname(os.path.dirname(
+#       __file__)), 'accounts', username, 'config.yml')
+
+#   for config_name in config_names:
+#       config_path = os.path.join(os.path.dirname(os.path.dirname(
+#           __file__)), 'accounts', username, config_name)
+#       if (config_name not in AVAILABLE_FILES):
+#           _print(
+#               f"[INFO] Copying file from  : {default_path} to {config_path}")
+#           # copy config files to that dir
+#           os.popen(f'{command} {default_path} {config_path}')
+#       else:
+#           _print(f"[INFO] File {config_name} already exists.")
 
 
-def comment_out_keys_in_config(username):
-    '''
-    Remove jobs.
-    '''
-    config_path = os.path.join(os.path.dirname(os.path.dirname(
-        __file__)), 'accounts', username, 'config.yml')
-    
-    with open(config_path, 'r') as f:
-        data = f.read()
+# def comment_out_keys_in_config(username):
+#   '''
+#   Remove jobs.
+#   '''
+#   config_path = os.path.join(os.path.dirname(os.path.dirname(
+#       __file__)), 'accounts', username, 'config.yml')
 
-    clear_contents_of_file(config_path)
+#   with open(config_path, 'r') as f:
+#       data = f.read()
 
-    #  remove contents of file
-    with open(config_path, 'w', encoding='utf-8') as f:
-        sleep(0.6)
-        # get commented keys
-        # loop over file content to find the key
-        # comment out the key
-        for key in get_commented_keys():
-            data = comment_key(data, key)
-        f.write(data)
-    
+#   # clear_contents_of_file(config_path)
+
+#   #  remove contents of file
+#   with open(config_path, 'w', encoding='utf-8') as f:
+#       sleep(0.6)
+#       # get commented keys
+#       # loop over file content to find the key
+#       # comment out the key
+#       for key in get_commented_keys():
+#           data = comment_key(data, key)
+#       f.write(data)
+
     # after commenting out the keys, create the default configs
-    create_default_configs(username)
+    # create_default_configs(username)
+
 
 def comment_key(data, key: str):
     '''Replace line with a commented line'''
     return data.replace(key, f"# {key}")
+
 
 def change_keys_in_config(username):
     '''
@@ -184,11 +191,13 @@ def change_keys_in_config(username):
         yaml.default_flow_style = True
         yaml.width = float("inf")
         yaml.dump(data, fp)
-    
-    sleep(0.8)
-    comment_out_keys_in_config(username)
+
+    # sleep(0.8)
+    # comment_out_keys_in_config(username)
 
 # Make the default config files and folders for a user
+
+
 def make_config(_instagram_username):
     '''
     Make the default config files and folders for a user
@@ -199,6 +208,7 @@ def make_config(_instagram_username):
     for file in LIST_OF_FILES:
         config_path = os.path.join(os.path.dirname(os.path.dirname(
             __file__)), 'accounts', _instagram_username, file)
+        print("CONFIG PATH : " + config_path)
         default_path = os.path.join(os.path.dirname(os.path.dirname(
             __file__)), 'Bot', 'config-examples', file)
         if (file not in AVAILABLE_FILES):
@@ -211,6 +221,7 @@ def make_config(_instagram_username):
     return "[INFO] Success"
 
 # make the accounts folder and the user folder
+
 
 def make_directories(_username):
     accounts_dir = os.path.join(os.path.dirname(os.path.dirname(
@@ -228,6 +239,7 @@ def make_directories(_username):
         os.mkdir(accounts_dir)
         os.mkdir(user_dir)
         return True
+
 
 # check base accounts folder
 if (os.path.exists(os.path.join(os.path.dirname(os.path.dirname(

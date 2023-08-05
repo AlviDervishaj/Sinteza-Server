@@ -1,10 +1,10 @@
 import { Socket } from "socket.io";
 import { EmitTypes, EventTypes } from "../helpers/Types";
 import { Device } from "../helpers/classes/Device";
-import { spawn } from "node:child_process";
+import { ExecException, exec, spawn } from "node:child_process";
 import os from "node:os";
 
-const devices: Device[] = [];
+let devices: Device[] = [];
 
 const DevicesList = {
   "R9ZW305K08Z": "A01",
@@ -82,31 +82,41 @@ export class Devices {
 
     // get all devices
     connection.on<EventTypes>("get-devices", () => {
-      Object.entries(DevicesList).forEach(([key, value]: [key: string, value: string]) => {
-        // get battery;
-        const device: Device | undefined = devices.find((d: Device) => d.id === key && d.name === value);
-        if (device && device.id && device.name) {
-          const platformCommand: string = os.platform() === "win32" ? "findstr /i" : "egrep"
-          const command = `adb -s ${key} shell dumpsys battery | ${platformCommand} "level: "`;
-          const sh = spawn(command, { shell: true });
-          sh.stdout.on("data", (data: string | Buffer) => {
-            const d = data.toString('utf-8').replace('level: ', '').replace('\n', '').trim();
-            devices.splice(devices.indexOf(device), 1);
-            const _d: Device = new Device(key, value, `${d}%`, undefined);
-            devices.push(_d);
+      let output: string = "";
+      spawn('adb devices', { shell: true }).stdout.on('data', (_output: string | Buffer) => {
+        output = _output.toString('utf-8').replace("List of devices attached", "").replace("device", "").replace("\t", "")
+        return;
+      })
+      setTimeout(() => {
+        const ids: string[] = output.trim()
+          .split("\n")
+          .map((d) => {
+            const temp = d.replace("\r", "");
+            const _t_stripped_temp = temp.replace("\t", "");
+            return _t_stripped_temp.replace("device", "");
           });
-          return;
-        }
-        // create one
         const platformCommand: string = os.platform() === "win32" ? "findstr /i" : "egrep"
-        const command = `adb -s ${key} shell dumpsys battery | ${platformCommand} "level: "`;
-        const sh = spawn(command, { shell: true });
-        sh.stdout.on("data", (data: string | Buffer) => {
-          const d = data.toString('utf-8').replace('level: ', '').replace('\n', '').trim();
-          const device: Device = new Device(key, value, `${d}%`, undefined);
-          devices.push(device);
+        ids.map((id: string) => {
+          Object.entries(DevicesList).forEach(([key, value]: [key: string, value: string]) => {
+            if (devices.find((_d: Device) => _d.id === key)) return;
+            if (key === id) {
+              const command = `adb -s ${key} shell dumpsys battery | ${platformCommand} "level: "`;
+              let _battery: string = "X";
+              exec(command, (error: ExecException | null, stdout: string) => {
+                if (error) {
+                  console.log({ error });
+                  return;
+                }
+                if (stdout.includes(`device '${key}' not found`)) {
+                  _battery = "X";
+                }
+                else _battery = `${stdout.trim().split(":")[1]}%`.trim();
+              })
+              devices.push(new Device(key, value, _battery, null));
+            }
+          });
         });
-      });
+      }, 100);
       setTimeout(() => {
         connection.emit<EmitTypes>("get-devices-message", devices)
       }, 300);

@@ -100,21 +100,36 @@ export function startBot(data: BotFormData, connection: Socket): ChildProcessWit
 }
 
 // Start Bot Checks
-export function startBotChecks(data: BotFormData, connection: Socket): ChildProcessWithoutNullStreams | undefined {
+export function startBotChecks(data: BotFormData, output: string): ChildProcessWithoutNullStreams | undefined {
   if (!data) {
-    connection.emit<EmitTypes>("start-bot-checks-message", '[ERROR] Bot form data is not valid.');
+    output = "[ERROR] Bot form data is not valid.";
     return;
   }
   if (typeof data.username !== 'string' || data.username.trim() === "") {
-    connection.emit<EmitTypes>("start-bot-checks-message", '[ERROR] Username is not valid.');
+    output = "[ERROR] Username is not valid.";
     return;
   }
   const command: string = os.platform() === "win32" ? "python" : "python3";
   const cmd = spawn(command,
     [path.join(process.cwd(), 'scripts', 'start_bot_checks.py')],
     { shell: true });
-  cmd.stdin.write(JSON.stringify({ ...data, device: data.device.id }));
+  const { device, ...rest } = data;
+  const id: string = device._id;
+  cmd.stdin.write(JSON.stringify({ device: id, ...rest }));
   cmd.stdin.end()
-  transferChildProcessOutput(cmd, connection, "start-bot-checks-message");
-  return cmd;
+  cmd.stderr.on("data", (chunk: string | Buffer) => {
+    console.log(`Stderr data : ${chunk.toString('utf-8')}`);
+  })
+  cmd.stdout.on("data", (chunk: string | Buffer) => {
+    const chunkString = chunk.toString("utf-8");
+    const fData: string = chunkString
+      .split("\n")
+      .map((line: string) => line)
+      .join("\n");
+    if (output.includes(fData)) return;
+    else output += fData;
+  });
+  cmd.on("close", (code: number | null) => {
+    console.log("[INFO] FINISHED.\nCODE : ", code);
+  });
 }

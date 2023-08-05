@@ -1,10 +1,15 @@
-import { ChildProcessWithoutNullStreams } from "node:child_process";
+import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { Socket } from "socket.io";
-import { ConfigRows, CreateProcessData, EmitTypes, EventTypes, SessionConfigSkeleton, SessionProfileSkeleton } from "../helpers/Types";
+import { ConfigRows, ConfigRowsSkeleton, CreateProcessData, EmitTypes, EventTypes, ServerActionSessionData, SessionConfigSkeleton, SessionProfileSkeleton } from "../helpers/Types";
+import os from "node:os";
 import { Process } from "../helpers/classes/Process";
-import { startBot, startBotChecks } from "../helpers/Processes";
+import { startBotChecks } from "../helpers/Processes";
+import path from "node:path";
+import { checkBotFinished, checkOutputCrashes, checkOutputCritical, checkOutputErrors, checkOutputLogs, checkOutputSleeping, checkOutputWarnings } from "../helpers/ServerActions";
 
 let processes: Process[] = [];
+
+const sessions = new Map<string, ConfigRowsSkeleton>();
 
 
 // update process
@@ -17,6 +22,64 @@ const updateProcesses = (_process: Process) => {
       return _process;
     } else return p;
   })
+}
+
+const handleProcessSchedule = (data: CreateProcessData) => {
+  const _process = new Process(
+    data.formData.device,
+    data.formData.username,
+    data.membership,
+    data.status,
+    "",
+    0,
+    0,
+    0,
+    ConfigRows,
+    SessionConfigSkeleton,
+    SessionProfileSkeleton,
+    0,
+    data.scheduled,
+    data.jobs,
+    "config.yml",
+    Date.now(),
+  );
+  processes.push(_process);
+  setTimeout(() => {
+    // process added to pool, now start it
+    // eslint-disable-next-line prefer-const
+    let output: string = "";
+    startBotChecks(data.formData, output);
+    // start it
+    const command: string = os.platform() === "win32" ? "python" : "python3";
+    const cmd: ChildProcessWithoutNullStreams = spawn(`${command} ${path.join(process.cwd(),
+      'scripts', 'start_bot.py',)
+      }`,
+      { shell: true }
+    );
+    const _startBotData = { username: _process.username, config_name: _process.configFile };
+    cmd.stdin.write(JSON.stringify(_startBotData));
+    cmd.stdin.end();
+    cmd.stdout.on("data", (chunk: string | Buffer) => {
+      const output = chunk.toString("utf-8");
+      if (
+        checkOutputCrashes(output) ||
+        checkBotFinished(output) ||
+        checkOutputWarnings(output) ||
+        checkOutputErrors(output) ||
+        checkOutputLogs(output) ||
+        checkOutputSleeping(output) ||
+        checkOutputCritical(output)
+      ) {
+        // remove empty lines 
+        const fData = output.split("\n").map((line: string) => line).join("\n");
+        if (_process.result.includes(fData)) return;
+        _process.result += fData;
+      }
+      else return;
+    });
+    sessions.set(_process.username, _process.session);
+    processes.map((_p: Process) => _p.username === _process.username ? _process : _p);
+  }, data.startsAt);
 }
 
 // remove process
@@ -59,9 +122,45 @@ export class Processes {
         connection.emit<EmitTypes>("get-processes-message", ps);
         return;
       }
-      // get all processes
-      connection.emit<EmitTypes>("get-processes-message", processes);
-      return;
+      // 1. Get Session Data
+      processes.map((_process: Process) => {
+        const data: ServerActionSessionData = { username: _process.username, followers_now: _process.followers, following_now: _process.following };
+        const _path: string = path.join(process.cwd(), 'scripts', 'sessions.py');
+        const command: string = os.platform() === "win32" ? "python" : "python3";
+        const cmd: ChildProcessWithoutNullStreams = spawn(`${command} ${_path}`, { shell: true });
+        cmd.stdin.write(JSON.stringify(data));
+        cmd.stdin.end();
+        cmd.stdout.on("data", (data: string | Buffer) => {
+          // convert to string
+          const fData = data.toString('utf-8');
+          if (fData.includes("[ERROR] You have to run the bot at least once to generate a report!") ||
+            fData.includes("[ERROR] If you want to use telegram_reports")) {
+            sessions.set(_process.username, ConfigRows);
+            return;
+          }
+          const pData: ConfigRowsSkeleton = JSON.parse(fData) as ConfigRowsSkeleton;
+          sessions.set(_process.username, pData);
+        });
+        cmd.stderr.on("data", (data: string | Buffer) => {
+          // convert to string
+          const fData = data.toString('utf-8');
+          if (fData.includes("[ERROR] You have to run the bot at least once to generate a report!") ||
+            fData.includes("[ERROR] If you want to use telegram_reports")) {
+            sessions.set(_process.username, ConfigRows);
+            return;
+          }
+          const pData: ConfigRowsSkeleton = JSON.parse(fData) as ConfigRowsSkeleton;
+          sessions.set(_process.username, pData);
+        });
+        const session: ConfigRowsSkeleton | undefined = sessions.get(_process.username);
+        _process.session = session ? session : ConfigRows;
+        return _process;
+      });
+      console.log({ processes });
+      setTimeout(() => {
+        connection.emit<EmitTypes>("get-processes-message", processes);
+        return;
+      }, 350);
     });
     // Get One Process
     connection.on<EventTypes>("get-process", (props: { username: string, deviceId: string }) => {
@@ -74,74 +173,102 @@ export class Processes {
     })
     // Create Process
     connection.on<EventTypes>("create-process", (data: CreateProcessData) => {
-      const _process = new Process(
-        data.formData.device,
-        data.formData.username,
-        data.membership,
-        "RUNNING",
-        "",
-        0,
-        0,
-        0,
-        ConfigRows,
-        SessionConfigSkeleton,
-        SessionProfileSkeleton,
-        0,
-        data.scheduled,
-        data.jobs,
-        "config.yml",
-        Date.now(),
-      );
-      const p = processes.filter((process) => {
-        if (process.username === _process.username) {
+      processes.map((process) => {
+        if (process.username === data.formData.username) {
           if (process.status === "RUNNING" || process.status === "WAITING") {
+            connection.emit<EmitTypes>("create-process-message", "[ERROR] Process is already running...");
             return process;
           } else {
             // remove process from pool if status is not running or not waiting
-            removeProcess(_process);
+            removeProcess(process);
             return undefined;
           }
         }
         return undefined;
       });
-      // if process username in pool do nothing
-      if (p.length > 0) {
-        connection.emit<EmitTypes>("create-process-message", "[ERROR] Process is running !");
-        return;
-      }
       if (data.scheduled) {
-        connection.emit<EmitTypes>("create-process-message", "[INFO] Scheduled bot start !");
-        setTimeout(() => {
-          // process added to pool, now start it
-          startBotChecks(data.formData, connection);
-          // start it
-          const cmd: ChildProcessWithoutNullStreams | undefined = startBot(data.formData, connection)
-          console.log({ cmd })
-          if (cmd) {
-            // add relation
-            this.relations.set(_process.username, cmd);
-            processes.push(_process);
-            connection.emit<EmitTypes>("create-process-message", _process);
-          }
-          else return;
-        }, data.startsAt);
+        handleProcessSchedule(data);
       }
       else {
+        const _process = new Process(
+          data.formData.device,
+          data.formData.username,
+          data.membership,
+          data.status,
+          "",
+          0,
+          0,
+          0,
+          ConfigRows,
+          SessionConfigSkeleton,
+          SessionProfileSkeleton,
+          0,
+          data.scheduled,
+          data.jobs,
+          "config.yml",
+          Date.now(),
+        );
         // process added to pool, now start it
-        startBotChecks(data.formData, connection);
-        // start it
-        const cmd: ChildProcessWithoutNullStreams | undefined = startBot(data.formData, connection)
-        console.log({ cmd })
-        if (cmd) {
-          // add relation
+        // eslint-disable-next-line prefer-const
+        let output: string = "";
+        startBotChecks(data.formData, output);
+        setTimeout(() => {
+          connection.emit<EmitTypes>("start-bot-message", output);
+          // start it
+          const command: string = os.platform() === "win32" ? "python" : "python3";
+          const cmd: ChildProcessWithoutNullStreams = spawn(`${command} ${path.join(process.cwd(),
+            'scripts', 'start_bot.py',)
+            }`,
+            { shell: true }
+          );
+          const _startBotData = { username: _process.username, config_name: _process.configFile };
+          cmd.stdin.write(JSON.stringify(_startBotData));
+          cmd.stdin.end();
+          _process.cmd = cmd;
+          cmd.stderr.on("data", (chunk: string | Buffer) => {
+            const output = chunk.toString("utf-8");
+            console.log(output);
+            if (
+              checkOutputCrashes(output) ||
+              checkBotFinished(output) ||
+              checkOutputWarnings(output) ||
+              checkOutputErrors(output) ||
+              checkOutputLogs(output) ||
+              checkOutputSleeping(output) ||
+              checkOutputCritical(output)
+            ) {
+              // remove empty lines 
+              const fData = output.split("\n").map((line: string) => line).join("\n");
+              if (_process.result.includes(fData)) return;
+              _process.result += fData;
+            }
+            else return;
+          })
+          cmd.stdout.on("data", (chunk: string | Buffer) => {
+            const output = chunk.toString("utf-8");
+            if (
+              checkOutputCrashes(output) ||
+              checkBotFinished(output) ||
+              checkOutputWarnings(output) ||
+              checkOutputErrors(output) ||
+              checkOutputLogs(output) ||
+              checkOutputSleeping(output) ||
+              checkOutputCritical(output)
+            ) {
+              // remove empty lines 
+              const fData = output.split("\n").map((line: string) => line).join("\n");
+              if (_process.result.includes(fData)) return;
+              _process.result += fData;
+            }
+            else return;
+          });
           this.relations.set(_process.username, cmd);
+          sessions.set(_process.username, _process.session);
           processes.push(_process);
-          connection.emit<EmitTypes>("create-process-message", _process);
-        }
-        else return;
+          return;
+        }, 200);
       }
-
-    })
+    });
     // Update Process
     connection.on<EventTypes>("update-process", (_process: Process) => {
       updateProcesses(_process);
@@ -199,3 +326,4 @@ export class Processes {
     });
   }
 }
+

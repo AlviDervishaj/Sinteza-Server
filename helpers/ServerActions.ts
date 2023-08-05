@@ -108,8 +108,14 @@ export function transferChildOutputWithConditions(
     console.log("[INFO] FINISHED.\nCODE : ", code);
   });
 
+  cmd.stderr.on("data", (chunk: string | Buffer) => {
+    const fData: string = chunk.toString('utf-8');
+    console.log(`Stderr data : ${fData}`);
+  })
+
   cmd.stdout.on("data", (chunk: string | Buffer) => {
     const output = chunk.toString("utf-8");
+    console.log(output);
     if (
       checkOutputCrashes(output) ||
       checkBotFinished(output) ||
@@ -132,15 +138,20 @@ export function transferChildProcessOutput(
   connection: Socket,
   emitType: EmitTypes,
 ) {
-  cmd.on("close", (code: number | null) => {
-    console.log("[INFO] FINISHED.\nCODE : ", code);
-  });
+  cmd.stderr.on("data", (chunk: string | Buffer) => {
+    console.log(`Stderr data : ${chunk.toString('utf-8')}`);
+  })
   cmd.stdout.on("data", (chunk: string | Buffer) => {
     const chunkString = chunk.toString("utf-8");
     const fData: string = chunkString
       .split("\n")
       .map((line: string) => line)
       .join("\n");
+
+    console.log(`${emitType} -> ${fData}`);
     connection.emit<EmitTypes>(emitType, fData)
+  });
+  cmd.on("close", (code: number | null) => {
+    console.log("[INFO] FINISHED.\nCODE : ", code);
   });
 }

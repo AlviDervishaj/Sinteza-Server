@@ -1,5 +1,6 @@
 import os
 import subprocess
+import platform
 import sys
 import json
 from dotenv import dotenv_values
@@ -21,7 +22,7 @@ config_path = os.path.join(os.path.dirname(os.path.dirname(
     __file__)), 'accounts', data["username"], data["config_name"])
 
 print(f"[INFO] Starting Bot for {data['username']}")
-command = 'python'
+command = "python" if platform.system() == "Windows" else "python3"
 output = subprocess.Popen(
     [command, run_path, '--config',  config_path])
 print(f"[INFO] Bot for {data['username']} started.")
