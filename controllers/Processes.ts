@@ -35,6 +35,7 @@ const sessions = new Map<string, ConfigRowsSkeleton>();
 export class Processes {
   // list of connections
   private connections: Socket[];
+  // a cmd and process username mapping
   private relations: Map<string, ChildProcessWithoutNullStreams>;
 
   // format pid
@@ -49,21 +50,7 @@ export class Processes {
     return pid;
   }
 
-  // remove process
-  removeProcess(_process: Process) {
-    if (_process.status !== "RUNNING" && _process.status !== "WAITING") {
-      const p = processes.filter((p) => {
-        if (
-          p.username === _process.username &&
-          p.device === _process.device
-        ) {
-          return;
-        } else return p;
-      })
-      processes.splice(0, processes.length);
-      processes = [...p];
-    }
-  }
+  // handle process schedule
   handleProcessSchedule = (data: CreateProcessData) => {
     const _process = new Process(
       data.formData.device,
@@ -116,9 +103,6 @@ export class Processes {
         })
         names.set(_process.username, _process.status);
       });
-      sessions.set(_process.username, _process.session);
-      this.relations.set(_process.username, cmd);
-      processes.map((_p: Process) => _p.username === _process.username ? _process : _p);
       cmd.stderr.on("data", (chunk: string | Buffer) => {
         const output = chunk.toString('utf-8').split("\n").map((line: string) => line).join("\n");
         if (_process.result.includes(output)) return;
@@ -524,6 +508,11 @@ export class Processes {
         }
       }
       if (data.scheduled) {
+        const p: Process | undefined = processes.find((p) => p.username === data.formData.username);
+        if (p) {
+          // process exists
+          processes.splice(processes.indexOf(p), 1);
+        }
         this.handleProcessSchedule(data);
       }
       else {
@@ -546,8 +535,14 @@ export class Processes {
     })
 
     // remove process
-    connection.on<EventTypes>("remove-process", (_process: Process) => {
-      const p = processes.find((p) => p.username === _process.username && p.device.id === _process.device.id);
+    connection.on<EventTypes>("remove-process", (_username: string) => {
+      if (names.has(_username)) {
+        if (names.get(_username) === "RUNNING" || names.get(_username) === "WAITING") {
+          connection.emit<EmitTypes>("create-process-message", "[ERROR] Process is already running...");
+          return;
+        }
+      }
+      const p: Process | undefined = processes.find((p) => p.username === _username);
       if (p) {
         // process exists
         processes.splice(processes.indexOf(p), 1);

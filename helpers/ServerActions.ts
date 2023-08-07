@@ -28,7 +28,11 @@ export const checkOutputLogs = (output: string, proc: Process) => {
   else if (output.includes("INFO | Finish time:")) return proc.result += output;
   else if (output.includes("INFO | Duration")) return proc.result += output;
   else if (output.includes("INFO | You have logged out from")) return proc.result += output;
-  else if (output.includes("INFO | -------- START:")) return proc.result += output;
+  else if (output.includes("INFO | -------- START:")){
+    proc.status = "RUNNING";
+    proc.scheduled = false;
+   return proc.result += output;  
+  }
   else if (output.includes("scheduled for this session")) return proc.result += output;
   else if (output.includes("INFO | Current active-job: ")) return proc.result += output;
   else if (output.includes("INFO | Completed sessions:")) return proc.result += output;
