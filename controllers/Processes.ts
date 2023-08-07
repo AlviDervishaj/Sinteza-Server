@@ -125,7 +125,6 @@ export class Processes {
       }
       // assign it to the usernames
       data.formData.usernames = botUsernames;
-      console.log({ botUsernames });
       data.formData.usernames.forEach((_username: string, index: number) => {
         // check if process with this username exists
         const _process = new Process(
