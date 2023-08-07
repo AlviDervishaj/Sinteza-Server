@@ -2,10 +2,11 @@ import { Socket } from "socket.io";
 import type { BotFormData, EmitTypes } from "./Types";
 import path from "path";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { transferChildOutputWithConditions, transferChildProcessOutput } from "./ServerActions";
+import { transferChildProcessOutput } from "./ServerActions";
 import dayjs from "dayjs";
 import os from "node:os";
 import { readFile, writeFile } from "node:fs";
+import { Process } from "./classes/Process";
 
 // Delete Older Logs
 export function deleteOlderLogs(username: string, connection: Socket) {
@@ -84,31 +85,8 @@ export function terminateProcess(pid: string, connection: Socket) {
   }
 }
 
-// Start Bot
-export function startBot(data: BotFormData, connection: Socket): ChildProcessWithoutNullStreams | undefined {
-  // const botFormData: BotFormData = JSON.parse(decodeURIComponent(req.query.botData as string));
-  const command: string = os.platform() === "win32" ? "python" : "python3";
-  const cmd: ChildProcessWithoutNullStreams = spawn(`${command} ${path.join(process.cwd(),
-    'scripts', 'start_bot.py',)
-    }`,
-    { shell: true }
-  );
-  cmd.stdin.write(JSON.stringify({ username: data.username, config_name: data.config_name ? data.config_name : 'config.yml' }));
-  cmd.stdin.end();
-  transferChildOutputWithConditions(cmd, connection, "start-bot-message");
-  return cmd;
-}
-
 // Start Bot Checks
-export function startBotChecks(data: BotFormData, output: string): ChildProcessWithoutNullStreams | undefined {
-  if (!data) {
-    output = "[ERROR] Bot form data is not valid.";
-    return;
-  }
-  if (typeof data.username !== 'string' || data.username.trim() === "") {
-    output = "[ERROR] Username is not valid.";
-    return;
-  }
+export function startBotChecks(data: BotFormData, _process: Process): void {
   const command: string = os.platform() === "win32" ? "python" : "python3";
   const cmd = spawn(command,
     [path.join(process.cwd(), 'scripts', 'start_bot_checks.py')],
@@ -126,8 +104,8 @@ export function startBotChecks(data: BotFormData, output: string): ChildProcessW
       .split("\n")
       .map((line: string) => line)
       .join("\n");
-    if (output.includes(fData)) return;
-    else output += fData;
+    if (_process.result.includes(fData)) return;
+    else _process.result += fData;
   });
   cmd.on("close", (code: number | null) => {
     console.log("[INFO] FINISHED.\nCODE : ", code);

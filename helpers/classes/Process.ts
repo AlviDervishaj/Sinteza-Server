@@ -1,6 +1,5 @@
 // uuid
 
-import { ChildProcessWithoutNullStreams } from "child_process";
 import {
   ConfigRows,
   ConfigRowsSkeleton,
@@ -15,7 +14,7 @@ import {
 let id = 0;
 
 export class Process {
-  private _device: { id: string, name: string, process: { username: string, configFile: string } | null, battery: string };
+  private _device: { id: string, name: string, process: { username: string, configFile: string } | null, battery: string, };
   private _scheduled: false | string;
   private _result: string;
   private _total: number;
@@ -33,7 +32,7 @@ export class Process {
   private _jobs: Jobs = ['follow'];
   private _configFile: ConfigNames = "config.yml";
   private _startTime: number;
-  private _cmd: ChildProcessWithoutNullStreams | undefined;
+  private _pid: string;
 
   constructor(
     device: DeviceSkeleton,
@@ -70,16 +69,16 @@ export class Process {
     this._jobs = _jobsThisSession;
     this._configFile = _configFile;
     this._startTime = _startTime;
-    this._cmd = undefined;
+    this._pid = "";
     id++;
   }
 
-  get cmd(): ChildProcessWithoutNullStreams | undefined {
-    return this._cmd;
+  get pid() {
+    return this._pid;
   }
 
-  set cmd(cmd: ChildProcessWithoutNullStreams) {
-    this._cmd = cmd;
+  set pid(newPid: string) {
+    this._pid = newPid;
     return;
   }
 

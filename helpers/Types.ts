@@ -6,6 +6,7 @@ export type Room = "devices" | "processes";
 // Event Server Types
 export type EventTypes = "get-processes" |
   "get-config" |
+  "create-processes" |
   "get-session" |
   "create-devices" |
   "terminate-process" |
@@ -131,10 +132,10 @@ export type ApiDevices = {
 
 
 export type DeviceSkeleton = {
-  _id: string;
-  _name: string;
-  _process: { username: string, configFile: string } | null;
-  _battery: string;
+ _id: string;
+ _name: string;
+ _process: { username: string, configFile: string } | null;
+ _battery: string;
 }
 
 export type BotFormData = {
@@ -459,7 +460,7 @@ export type SessionProfile = {
   following: number
 }
 
-export type ConfigNames = 'config.yml' | 'config2.yml' | 'config3.yml';
+export type ConfigNames = 'config.yml' | 'config2.yml' | 'unfollow.yml';
 
 export const SessionProfileSkeleton: SessionProfile = {
   posts: 0,

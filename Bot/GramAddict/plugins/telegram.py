@@ -178,7 +178,7 @@ class TelegramReports(Plugin):
         print(f'Username: {username}')  # Print the username for debugging.
 
         # Define the name of the CSV file.
-        filename = f'C:/Users/Perdorues/Desktop/{username}_session_data.csv'
+        filename = f'accounts/{username}/session_data.csv'
         print(f'Filename: {filename}')  # Print the filename for debugging.
 
         # Define the fieldnames for the CSV file.

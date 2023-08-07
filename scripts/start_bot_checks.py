@@ -3,6 +3,7 @@ import sys
 import json
 import collections
 import ruamel.yaml
+from time import sleep
 from ruamel.yaml.comments import CommentedSeq
 
 yaml = ruamel.yaml.YAML()
@@ -37,7 +38,6 @@ def _print(value: str):
 
 botConfig = sys.stdin.read()
 customConfig = json.loads(botConfig)
-_print(f"CUSTOM CONFIG : {customConfig}")
 if not customConfig['username']:
     _print("Please enter a valid instagram username")
     exit()
@@ -65,10 +65,10 @@ elif customConfig['working-hours']:
 jobs = customConfig.pop("jobs", "follow")
 
 
-#   def clear_contents_of_file(file_path: str):
-#       with open(file_path, "w") as f:
-#           f.seek(0)
-#           f.write("")
+def clear_contents_of_file(file_path: str):
+    with open(file_path, "w") as f:
+        f.seek(0)
+        f.write("")
 
 
 def get_commented_keys():
@@ -95,47 +95,47 @@ def get_commented_keys():
         return ["hashtag-likers-top", "total-unfollows-limit", "unfollow-non-followers", "unfollow", "unfollow-any", "unfollow-any-non-followers", "unfollow-any-followers", "total-unfollows-limit"]
 
 
-#   def create_default_configs(username):
-#   config_names = ['config2.yml', 'config3.yml']
-#   default_path = os.path.join(os.path.dirname(os.path.dirname(
-#       __file__)), 'accounts', username, 'config.yml')
+def create_default_configs(username):
+    config_names = ['config2.yml', 'unfollow.yml']
+    default_path = os.path.join(os.path.dirname(os.path.dirname(
+        __file__)), 'accounts', username, 'config.yml')
 
-#   for config_name in config_names:
-#       config_path = os.path.join(os.path.dirname(os.path.dirname(
-#           __file__)), 'accounts', username, config_name)
-#       if (config_name not in AVAILABLE_FILES):
-#           _print(
-#               f"[INFO] Copying file from  : {default_path} to {config_path}")
-#           # copy config files to that dir
-#           os.popen(f'{command} {default_path} {config_path}')
-#       else:
-#           _print(f"[INFO] File {config_name} already exists.")
+    for config_name in config_names:
+        config_path = os.path.join(os.path.dirname(os.path.dirname(
+            __file__)), 'accounts', username, config_name)
+        if (config_name not in AVAILABLE_FILES):
+            _print(
+                f"[INFO] Copying file from  : {default_path} to {config_path}")
+            # copy config files to that dir
+            os.popen(f'{command} {default_path} {config_path}')
+        else:
+            _print(f"[INFO] File {config_name} already exists.")
 
 
-# def comment_out_keys_in_config(username):
-#   '''
-#   Remove jobs.
-#   '''
-#   config_path = os.path.join(os.path.dirname(os.path.dirname(
-#       __file__)), 'accounts', username, 'config.yml')
+def comment_out_keys_in_config(username):
+    '''
+    Remove jobs.
+    '''
+    config_path = os.path.join(os.path.dirname(os.path.dirname(
+        __file__)), 'accounts', username, 'config.yml')
 
-#   with open(config_path, 'r') as f:
-#       data = f.read()
+    with open(config_path, 'r') as f:
+        data = f.read()
 
-#   # clear_contents_of_file(config_path)
+    # clear_contents_of_file(config_path)
 
-#   #  remove contents of file
-#   with open(config_path, 'w', encoding='utf-8') as f:
-#       sleep(0.6)
-#       # get commented keys
-#       # loop over file content to find the key
-#       # comment out the key
-#       for key in get_commented_keys():
-#           data = comment_key(data, key)
-#       f.write(data)
+    #  remove contents of file
+    with open(config_path, 'w', encoding='utf-8') as f:
+        sleep(0.6)
+        # get commented keys
+        # loop over file content to find the key
+        # comment out the key
+        for key in get_commented_keys():
+            data = comment_key(data, key)
+        f.write(data)
 
     # after commenting out the keys, create the default configs
-    # create_default_configs(username)
+    create_default_configs(username)
 
 
 def comment_key(data, key: str):
@@ -192,8 +192,8 @@ def change_keys_in_config(username):
         yaml.width = float("inf")
         yaml.dump(data, fp)
 
-    # sleep(0.8)
-    # comment_out_keys_in_config(username)
+    sleep(0.8)
+    comment_out_keys_in_config(username)
 
 # Make the default config files and folders for a user
 

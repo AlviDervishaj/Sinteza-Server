@@ -4,7 +4,7 @@ import { Device } from "../helpers/classes/Device";
 import { ExecException, exec, spawn } from "node:child_process";
 import os from "node:os";
 
-let devices: Device[] = [];
+const devices: Device[] = [];
 
 const DevicesList = {
   "R9ZW305K08Z": "A01",
