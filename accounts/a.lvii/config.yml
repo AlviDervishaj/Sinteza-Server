@@ -41,7 +41,7 @@ blogger-followers: ""
 # blogger-following: [username1, username2]
 # blogger-post-likers: [username1, username2]
 # blogger: [username1, username2]
-# # # hashtag-likers-top: ""
+# # # # # # # # # # # # # # # # # # # # # # # # hashtag-likers-top: ""
 # hashtag-likers-recent: [hashtag1, hashtag2]
 # hashtag-posts-top: [hashtag1, hashtag2]
 # hashtag-posts-recent: [hashtag1, hashtag2]
@@ -63,18 +63,18 @@ delete-interacted-users: true
 mute-posts-after-follow: false
 mute-stories-after-follow: false
 
-## Unfollow (# # # unfollow jobs)
-# # # unfollow: 10-20
-# # # # # # unfollow-any: 10-20
-# # # # # # unfollow-non-followers: "0"
-# # # # # # # # # unfollow-any-non-followers: 10-20
-# # # # # # # # # unfollow-any-followers: 10-20
-# # # # unfollow-from-file: [usernames1.txt 7-15, usernames2.txt 6]
+## Unfollow (# # # # # # # # # # # # # # # # # # # # # # # # unfollow jobs)
+# # # # # # # # # # # # # # # # # # # # # # # # unfollow: 10-20
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # unfollow-any: 10-20
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # unfollow-non-followers: "0"
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # unfollow-any-non-followers: 10-20
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # unfollow-any-followers: 10-20
+# # # # # # # # # # # # # # # # # # # # # # # # # unfollow-from-file: [usernames1.txt 7-15, usernames2.txt 6]
 
-## Special modifier for # # # unfollow jobs
+## Special modifier for # # # # # # # # # # # # # # # # # # # # # # # # unfollow jobs
 sort-followers-newest-to-oldest: false
-# # # unfollow-delay: 15
-# # # unfollow-skip-limit: "0"
+# # # # # # # # # # # # # # # # # # # # # # # # unfollow-delay: 15
+# # # # # # # # # # # # # # # # # # # # # # # # unfollow-skip-limit: "0"
 
 ## Remove followers (active jobs)
 # remove-followers-from-file: [remove1.txt 5-10, remove2.txt 6]
@@ -119,7 +119,7 @@ max-welcoming-skips: 7 # number of max skips in welcoming new followers before e
 
 total-likes-limit: 120-150
 total-follows-limit: 40-50
-# total-# # # unfollows-limit: 40-50
+# total-# # # # # # # # # # # # # # # # # # # # # # # # unfollows-limit: 40-50
 total-watches-limit: 120-150
 total-successful-interactions-limit: 120-150
 total-interactions-limit: 280-300
