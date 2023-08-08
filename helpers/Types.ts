@@ -27,6 +27,7 @@ export type EventTypes = "get-processes" |
   "read-config" |
   "get-pid" |
   "start-bot" |
+  "remove-schedule" | 
   "start-bot-checks" |
   "remove-process";
 export type EmitTypes = `${EventTypes}-message`;

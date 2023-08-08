@@ -27,9 +27,11 @@ import {
 } from "../helpers/ServerActions";
 import { Device } from "../helpers/classes/Device";
 import { DevicesList } from "../helpers/Devices";
+import { clearTimeout } from "node:timers";
 
 export let processes: Process[] = [];
 const devices: Device[] = [];
+const schedules = new Map<string, NodeJS.Timeout>();
 export const names = new Map<string, "RUNNING" | "WAITING" | "STOPPED" | "FINISHED">();
 
 const sessions = new Map<string, ConfigRowsSkeleton>();
@@ -74,7 +76,7 @@ export class Processes {
       Date.now(),
     );
     processes.push(_process);
-    setTimeout(() => {
+    const timeout: NodeJS.Timeout = setTimeout(() => {
       // process added to pool, now start it
       startBotChecks(data.formData, _process);
       // start it
@@ -122,6 +124,8 @@ export class Processes {
       this.relations.set(_process.username, cmd);
       processes.map((_p: Process) => _p.username === _process.username ? _process : _p);
     }, data.startsAt);
+    schedules.set(_process.username, timeout);
+    return;
   }
 
 
@@ -171,9 +175,7 @@ export class Processes {
           data.formData.config_name,
           Date.now(),
         );
-        console.log(data);
         processes = processes.filter((_proc: Process) => _proc.username !== data.formData.username)
-        console.log({ length: processes.length })
         const command: string = os.platform() === "win32" ? "python" : "python3";
         const cmd: ChildProcessWithoutNullStreams = spawn(`${command} ${path.join(process.cwd(),
           'scripts', 'start_bot.py',)
@@ -313,7 +315,30 @@ export class Processes {
     // Start bot again
     connection.on<EventTypes>("start-process-again", (data: CreateProcessData) => {
       this.handleStartProcessAgain(data);
-    })
+    });
+
+    // Remove Schedule
+    connection.on<EventTypes>("remove-schedule", (_username: string) => {
+      if (schedules.has(_username)) {
+        const proc: Process | undefined = processes.find((_p: Process) => _p.username === _username);
+        if (proc) {
+          clearTimeout(schedules.get(_username));
+          proc.status = "STOPPED";
+          proc.scheduled = false;
+          names.set(_username, "STOPPED");
+          schedules.delete(_username);
+          processes.splice(processes.indexOf(proc), 1);
+          processes.push(proc);
+          connection.emit<EventTypes>("remove-schedule", `[INFO] Removed schedule for ${_username}`);
+        }
+        connection.emit<EventTypes>("remove-schedule", `[ERROR] Could not find bot for ${_username}`);
+      }
+      else {
+        connection.emit<EventTypes>("remove-schedule", "[INFO] Bot is not scheduled !");
+      }
+
+
+    });
     connection.on<EventTypes>("create-processes", (data: BulkWriteData) => {
       // only keep usernames that are not running
       const botUsernames: string[] = [];
@@ -626,7 +651,7 @@ export class Processes {
                 else _battery = `${stdout.trim().split(":")[1]}%`.trim();
               });
               const a: Process | undefined = processes.find((_p: Process) => _p.device.id === key && _p.device.name === value);
-              devices.push(new Device(key, value, _battery, a ? {username: a.username, configFile: a.configFile} : null));
+              devices.push(new Device(key, value, _battery, a ? { username: a.username, configFile: a.configFile } : null));
             }
           });
         });

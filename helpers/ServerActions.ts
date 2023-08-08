@@ -28,10 +28,10 @@ export const checkOutputLogs = (output: string, proc: Process) => {
   else if (output.includes("INFO | Finish time:")) return proc.result += output;
   else if (output.includes("INFO | Duration")) return proc.result += output;
   else if (output.includes("INFO | You have logged out from")) return proc.result += output;
-  else if (output.includes("INFO | -------- START:")){
+  else if (output.includes("INFO | -------- START:")) {
     proc.status = "RUNNING";
     proc.scheduled = false;
-   return proc.result += output;  
+    return proc.result += output;
   }
   else if (output.includes("scheduled for this session")) return proc.result += output;
   else if (output.includes("INFO | Current active-job: ")) return proc.result += output;
@@ -67,13 +67,18 @@ export const checkOutputWarnings = (output: string, proc: Process) => {
 };
 
 export const checkBotFinished = (output: string, proc: Process) => {
-  if (output.includes("INFO | -------- FINISH:")) return true;
-  else if (
-    output.includes("INFO | This bot is backed with love by me for free")
-  )
-    return proc.result += output;
+  if (output.includes("INFO | -------- FINISH:")) {
+    proc.status = "FINISHED";
+    proc.result += output;
+    return;
+  }
+  else if (output.includes("INFO | This bot is backed with love by me for free.")) {
+    proc.status = "FINISHED";
+    proc.result += output;
+    return;
+  }
   else return false;
-};
+}
 export const checkOutputCritical = (output: string, proc: Process) => {
   if (output.includes("CRITICAL | ")) return proc.result += output;
   else return;
