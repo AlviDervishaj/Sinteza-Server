@@ -22,14 +22,14 @@ command = "copy" if sys.platform.startswith(
 def compare(x, y): return collections.Counter(x) == collections.Counter(y)
 
 
-def filter_substring(array: list[str], substring: str):
-    filtered_array: list[str] = []
-    for string in array:
-        if substring not in string:
-            filtered_array.append(string)
-        else:
-            continue
-    return filter_substring
+# def filter_substring(array: list[str], substring: str):
+#     filtered_array: list[str] = []
+#     for string in array:
+#         if substring not in string:
+#             filtered_array.append(string)
+#         else:
+#             continue
+#     return filter_substring
 
 
 def _print(value: str):
@@ -65,34 +65,34 @@ elif customConfig['working-hours']:
 jobs = customConfig.pop("jobs", "follow")
 
 
-def clear_contents_of_file(file_path: str):
-    with open(file_path, "w") as f:
-        f.seek(0)
-        f.write("")
+# def clear_contents_of_file(file_path: str):
+#     with open(file_path, "w") as f:
+#         f.seek(0)
+#         f.write("")
 
 
-def get_commented_keys():
-    '''
-    Get the keys to comment out based on the jobs.
-    '''
-    if jobs[0] == "follow":
-        # comment out the unfollow job
-        return ["hashtag-likers-top", "total-unfollows-limit", "unfollow-non-followers", "unfollow", "unfollow-any", "unfollow-any-non-followers", "unfollow-any-followers", "total-unfollows-limit"]
-    elif jobs[0] == "unfollow":
-        # comment out the follow job
-        return ["follow-limit", "follow-percentage", "blogger-followers"]
-    elif jobs[0] == "hashtags":
-        if len(jobs) == 2 and jobs[1] == "follow":
-            # comment out the unfollow job
-            return ["unfollow-non-followers", "total-unfollows-limit", "unfollow", "unfollow-any", "unfollow-any-non-followers", "unfollow-any-followers", "total-unfollows-limit"]
-        elif len(jobs) == 2 and jobs[1] == "unfollow":
-            # comment out the follow job
-            return ["follow-limit", "follow-percentage", "blogger-followers"]
-        else:
-            # comment out the unfollow job and follow job
-            return ["follow-limit", "blogger-followers", "total-unfollows-limit", "follow-percentage", "unfollow-non-followers", "unfollow", "unfollow-any", "unfollow-any-non-followers", "unfollow-any-followers", "total-unfollows-limit"]
-    else:
-        return ["hashtag-likers-top", "total-unfollows-limit", "unfollow-non-followers", "unfollow", "unfollow-any", "unfollow-any-non-followers", "unfollow-any-followers", "total-unfollows-limit"]
+# def get_commented_keys():
+#     '''
+#     Get the keys to comment out based on the jobs.
+#     '''
+#     if jobs[0] == "follow":
+#         # comment out the unfollow job
+#         return ["hashtag-likers-top", "total-unfollows-limit", "unfollow-non-followers", "unfollow", "unfollow-any", "unfollow-any-non-followers", "unfollow-any-followers", "total-unfollows-limit"]
+#     elif jobs[0] == "unfollow":
+#         # comment out the follow job
+#         return ["follow-limit", "follow-percentage", "blogger-followers"]
+#     elif jobs[0] == "hashtags":
+#         if len(jobs) == 2 and jobs[1] == "follow":
+#             # comment out the unfollow job
+#             return ["unfollow-non-followers", "total-unfollows-limit", "unfollow", "unfollow-any", "unfollow-any-non-followers", "unfollow-any-followers", "total-unfollows-limit"]
+#         elif len(jobs) == 2 and jobs[1] == "unfollow":
+#             # comment out the follow job
+#             return ["follow-limit", "follow-percentage", "blogger-followers"]
+#         else:
+#             # comment out the unfollow job and follow job
+#             return ["follow-limit", "blogger-followers", "total-unfollows-limit", "follow-percentage", "unfollow-non-followers", "unfollow", "unfollow-any", "unfollow-any-non-followers", "unfollow-any-followers", "total-unfollows-limit"]
+#     else:
+#         return ["hashtag-likers-top", "total-unfollows-limit", "unfollow-non-followers", "unfollow", "unfollow-any", "unfollow-any-non-followers", "unfollow-any-followers", "total-unfollows-limit"]
 
 
 def create_default_configs(username):
@@ -112,30 +112,30 @@ def create_default_configs(username):
             _print(f"[INFO] File {config_name} already exists.")
 
 
-def comment_out_keys_in_config(username):
-    '''
-    Remove jobs.
-    '''
-    config_path = os.path.join(os.path.dirname(os.path.dirname(
-        __file__)), 'accounts', username, 'config.yml')
+# def comment_out_keys_in_config(username):
+#     '''
+#     Remove jobs.
+#     '''
+#     config_path = os.path.join(os.path.dirname(os.path.dirname(
+#         __file__)), 'accounts', username, 'config.yml')
 
-    with open(config_path, 'r') as f:
-        data = f.read()
+#     with open(config_path, 'r') as f:
+#         data = f.read()
 
-    # clear_contents_of_file(config_path)
+#     # clear_contents_of_file(config_path)
 
-    #  remove contents of file
-    with open(config_path, 'w', encoding='utf-8') as f:
-        sleep(0.6)
-        # get commented keys
-        # loop over file content to find the key
-        # comment out the key
-        for key in get_commented_keys():
-            data = comment_key(data, key)
-        f.write(data)
+#     #  remove contents of file
+#     with open(config_path, 'w', encoding='utf-8') as f:
+#         sleep(0.6)
+#         # get commented keys
+#         # loop over file content to find the key
+#         # comment out the key
+#         for key in get_commented_keys():
+#             data = comment_key(data, key)
+#         f.write(data)
 
-    # after commenting out the keys, create the default configs
-    create_default_configs(username)
+#     # after commenting out the keys, create the default configs
+#     create_default_configs(username)
 
 
 def comment_key(data, key: str):
@@ -192,8 +192,8 @@ def change_keys_in_config(username):
         yaml.width = float("inf")
         yaml.dump(data, fp)
 
-    sleep(0.8)
-    comment_out_keys_in_config(username)
+    sleep(1)
+    create_default_configs(username)
 
 # Make the default config files and folders for a user
 
@@ -208,7 +208,6 @@ def make_config(_instagram_username):
     for file in LIST_OF_FILES:
         config_path = os.path.join(os.path.dirname(os.path.dirname(
             __file__)), 'accounts', _instagram_username, file)
-        print("CONFIG PATH : " + config_path)
         default_path = os.path.join(os.path.dirname(os.path.dirname(
             __file__)), 'Bot', 'config-examples', file)
         if (file not in AVAILABLE_FILES):
@@ -268,6 +267,7 @@ if os.path.exists(user_dir):
         _print("[INFO] Config is not correct. ")
         _print("[INFO] Replacing files...")
         make_config(customConfig['username'])
+        sleep(0.4)
         change_keys_in_config(customConfig['username'])
     _print("[INFO] End")
 else:
@@ -275,5 +275,6 @@ else:
     _print("[INFO] Folder created.")
     _print("[INFO] Creating config files...")
     make_config(customConfig['username'])
+    sleep(0.4)
     change_keys_in_config(customConfig['username'])
     _print("[INFO] End")

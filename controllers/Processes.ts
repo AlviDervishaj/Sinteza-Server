@@ -1,4 +1,4 @@
-import { ChildProcessWithoutNullStreams, ExecException, exec, spawn } from "node:child_process";
+import { ChildProcessWithoutNullStreams, ExecException, exec, spawn, execSync } from "node:child_process";
 import { Socket } from "socket.io";
 import {
   ConfigNames,
@@ -41,19 +41,7 @@ export class Processes {
   // list of connections
   private connections: Socket[];
   // a cmd and process username mapping
-  private relations: Map<string, ChildProcessWithoutNullStreams>;
-
-  // format pid
-  formatPid(data: string): string {
-    const _split_data: string[] = data.split("\n");
-    // filter out empty elements
-    const _not_empty: string[] = _split_data.filter(element => element);
-    // select the first one in the list
-    const _process: string = _not_empty[0];
-    const _formatted_process = _process.split(' ').filter(element => element).join(" ");
-    const pid: string = _formatted_process.split(" ")[1];
-    return pid;
-  }
+  private relations: Map<string, string>;
 
   // handle process schedule
   handleProcessSchedule = (data: CreateProcessData) => {
@@ -121,13 +109,11 @@ export class Processes {
         names.set(_process.username, _process.status);
       });
       sessions.set(_process.username, _process.session);
-      this.relations.set(_process.username, cmd);
       processes.map((_p: Process) => _p.username === _process.username ? _process : _p);
     }, data.startsAt);
     schedules.set(_process.username, timeout);
     return;
   }
-
 
   // update process
   updateProcesses(_process: Process) {
@@ -139,18 +125,6 @@ export class Processes {
         return _process;
       } else return p;
     })
-  }
-
-  getProcessPid(_process: Process): void {
-    const _path: string = path.join(process.cwd(), 'Bot', 'run.py');
-    const spawnedArgs: string = `--config ${path.join(process.cwd(),
-      'accounts', _process.username, 'config.yml')}`
-    const command = os.platform() === "linux" ? 'ps -aux | egrep' : 'tasklist | findstr /i';
-    const pythonCommand = os.platform() === "linux" ? 'python3' : 'python.exe';
-    exec(`${command} "${pythonCommand} ${_path} ${spawnedArgs}" `, (_: ExecException | null, output: string) => {
-      const result = this.formatPid(output.toString());
-      _process.pid = result;
-    });
   }
 
   handleStartProcessAgain(data: CreateProcessData) {
@@ -220,7 +194,6 @@ export class Processes {
           })
           names.set(_process.username, _process.status);
         });
-        this.relations.set(_process.username, cmd);
         sessions.set(_process.username, _process.session);
         processes.push(_process);
         return;
@@ -297,7 +270,6 @@ export class Processes {
         })
         names.set(_process.username, _process.status);
       });
-      this.relations.set(_process.username, cmd);
       sessions.set(_process.username, _process.session);
       processes.push(_process);
       return;
@@ -306,7 +278,7 @@ export class Processes {
 
   constructor() {
     this.connections = [];
-    this.relations = new Map<string, ChildProcessWithoutNullStreams>();
+    this.relations = new Map<string, string>();
   }
 
   // Add connection and event listeners
@@ -336,8 +308,6 @@ export class Processes {
       else {
         connection.emit<EventTypes>("remove-schedule", "[INFO] Bot is not scheduled !");
       }
-
-
     });
     connection.on<EventTypes>("create-processes", (data: BulkWriteData) => {
       // only keep usernames that are not running
@@ -437,11 +407,10 @@ export class Processes {
             });
             names.set(_process.username, _process.status);
           });
-          this.relations.set(_process.username, cmd);
           sessions.set(_process.username, _process.session);
           processes.push(_process);
           return;
-        }, 200);
+        }, 300);
       })
     })
     // Get All Processes
@@ -455,8 +424,22 @@ export class Processes {
       }
       // 1. Get Session Data
       processes.map((_process: Process) => {
-        // get pid
-        this.getProcessPid(_process);
+        const getPidsPath: string = path.join(process.cwd(), 'scripts', 'get_pids.py');
+        const getPidsCommand: string = os.platform() === "win32" ? "python" : "python3";
+        const getPidsCmd: ChildProcessWithoutNullStreams = spawn(`${getPidsCommand} ${getPidsPath}`, { shell: true });
+        getPidsCmd.stdout.on('data', (data: string | Buffer) => {
+          const result: string = data.toString('utf-8');
+          if (result.includes("--config C:\\Users\\Ermisa\\Documents\\repos\\Sinteza\\server\\accounts")) {
+            const results: string[] = result.split("\n");
+            results.forEach((res: string) => {
+              if (res.includes(`${path.join(process.cwd(), 'Bot', 'run.py')} --config ${path.join(process.cwd(), 'accounts', _process.username)}`)) {
+                const fResult: string[] = res.split(" ").filter(el => el);
+                const _pid = fResult[fResult.length - 1].replace("\r", "");
+                _process.pid = _pid;
+              }
+            });
+          }
+        });
         const platformCommand: string = os.platform() === "win32" ? "findstr /i" : "egrep"
         const c = `adb -s ${_process.device.id} shell dumpsys battery | ${platformCommand} "level: "`;
         let _battery: string = "X";
@@ -588,15 +571,21 @@ export class Processes {
     connection.on<EventTypes>("stop-process", (_username: string) => {
       const p = processes.find((process) => process.username === _username);
       if (p) {
-        const platformCommand: string = os.platform() === "win32" ? "taskkill /F /PID" : "kill -9"
-        const pid = p.pid;
+        if(p.pid){
+          try{
+            execSync(`taskkill /F /PID ${p.pid}`);
+          }
+          catch (e){
+            return;
+          }
+        }
         processes.map((_p: Process) => {
           if (p.username === _p.username) {
             _p.status = "STOPPED";
           }
         });
         names.set(_username, "STOPPED");
-        exec(`${platformCommand} ${pid}`)
+        this.relations.delete(_username);
         connection.emit<EmitTypes>("stop-process-message", "[INFO] Stopped process");
         return;
       }
