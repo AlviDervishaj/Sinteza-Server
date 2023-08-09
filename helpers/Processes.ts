@@ -90,10 +90,8 @@ export function startBotChecks(data: BotFormData, _process: Process): void {
   const command: string = os.platform() === "win32" ? "python" : "python3";
   const cmd = spawn(`${command} ${path.join(process.cwd(), 'scripts', 'start_bot_checks.py')}`,
     { shell: true });
-  console.log(path.join(process.cwd(), 'scripts', 'start_bot_checks.py'));
   const { device, ...rest } = data;
-  const id: string = device._id;
-  cmd.stdin.write(JSON.stringify({ device: id, ...rest }));
+  cmd.stdin.write(JSON.stringify({ device: device._id, ...rest }));
   cmd.stdin.end()
   cmd.stderr.on("data", (chunk: string | Buffer) => {
     console.log(`Stderr data : ${chunk.toString('utf-8')}`);

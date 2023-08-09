@@ -137,7 +137,6 @@ export function transferChildProcessOutput(
       .split("\n")
       .map((line: string) => line)
       .join("\n");
-
     console.log(`${emitType} -> ${fData}`);
     connection.emit<EmitTypes>(emitType, fData)
   });

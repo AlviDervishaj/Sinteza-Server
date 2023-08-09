@@ -70,7 +70,6 @@ export class Processes {
       // start it
       const command: string = os.platform() === "win32" ? "python" : "python3";
       const _startBotData: { username: string, config_name: ConfigNames } = { username: _process.username, config_name: _process.configFile };
-      console.log({ _startBotData });
       const cmd: ChildProcessWithoutNullStreams = spawn(`${command} ${path.join(process.cwd(),
         'scripts', 'start_bot.py',)
         }`,
@@ -339,7 +338,7 @@ export class Processes {
         const _process = new Process(
           data.formData.devices[index],
           _username,
-          data.membership,
+          data.membership[index],
           data.status,
           "",
           0,
@@ -350,14 +349,14 @@ export class Processes {
           SessionProfileSkeleton,
           0,
           data.scheduled,
-          data.jobs,
-          "config.yml",
+          data.formData.jobs,
+          data.formData.config_name ? data.formData.config_name : "config.yml",
           Date.now(),
         );
         names.set(_process.username, _process.status);
         const { usernames, config_name, devices, jobs, ...rest } = data.formData;
         // process added to pool, now start it
-        startBotChecks({ username: usernames[index], config_name, device: devices[index], jobs: jobs, ...rest }, _process);
+        startBotChecks({ username: usernames[index], config_name: config_name ? config_name : "config.yml", device: devices[index], jobs: jobs, ...rest }, _process);
         setTimeout(() => {
           // start bot
           const command: string = os.platform() === "win32" ? "python" : "python3";

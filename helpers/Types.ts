@@ -472,8 +472,7 @@ export type BulkFormData = {
 
 export type BulkWriteData = {
   formData: BulkFormData,
-  membership: "FREE" | "PREMIUM",
-  jobs: Jobs,
+  membership: Array<"FREE" | "PREMIUM">,
   scheduled: string | false,
   startTime: number,
   status: "RUNNING" | "WAITING" | "FINISHED" | "STOPPED"

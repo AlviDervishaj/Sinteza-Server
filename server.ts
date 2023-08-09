@@ -21,5 +21,5 @@ io.on('connection', (socket: Socket) => {
 });
 
 server.listen(3030, () => {
-  console.log('osht tu vrapu ne ... http://localhost:3030');
+  console.log('Running on http://localhost:3030');
 });
