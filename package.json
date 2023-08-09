@@ -6,8 +6,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "npx nodemon ./server.ts",
-    "lint": "rm -rf dist/ && npx eslint .",
-    "build": "npm run lint && tsc",
+    "rmprod": "rmdir dist /s /q",
+    "lint": "npx eslint .",
+    "build": "tsc",
     "start": "node ./dist/server.js"
   },
   "keywords": [],
