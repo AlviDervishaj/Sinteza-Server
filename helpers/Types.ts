@@ -457,26 +457,25 @@ export interface ScheduledType {
 export type CreateProcessData = NotScheduledType | ScheduledType
 
 export type BulkFormData = {
-  usernames: string[],
-  devices: DeviceSkeleton[],
-  jobs: Jobs,
+  usernames: string[];
+  devices: DeviceSkeleton[];
+  jobs: Jobs;
   config_name?: ConfigNames;
   "speed-multiplier"?: number;
-  "truncate-sources"?: string,
-  "blogger-followers"?: string[],
-  "hashtag-likers-top"?: string[],
-  "unfollow-non-followers"?: string,
-  "unfollow-skip-limit"?: string,
-  "working-hours"?: string[],
-}
-
+  "truncate-sources"?: string;
+  "blogger-followers"?: string[];
+  "hashtag-likers-top"?: string[];
+  "unfollow-non-followers"?: string;
+  "unfollow-skip-limit"?: string;
+  "working-hours"?: string[];
+};
 export type BulkWriteData = {
-  formData: BulkFormData,
-  membership: Array<"FREE" | "PREMIUM">,
-  scheduled: string | false,
-  startTime: number,
-  status: "RUNNING" | "WAITING" | "FINISHED" | "STOPPED"
-}
+  formData: BulkFormData;
+  memberships: Array<"FREE" | "PREMIUM">;
+  scheduled: string | false;
+  startTime: number;
+  status: "RUNNING" | "WAITING" | "FINISHED" | "STOPPED";
+};
 
 export type GetSessionFromPython = {
   following_now: number,

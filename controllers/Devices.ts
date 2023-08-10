@@ -98,12 +98,10 @@ export class Devices {
         return;
       })
       setTimeout(() => {
-        const ids: string[] = output.trim()
+        const ids: string[] = output
           .split("\n")
           .map((d) => {
-            const temp = d.replace("\r", "");
-            const _t_stripped_temp = temp.replace("\t", "");
-            return _t_stripped_temp.replace("device", "");
+            return d;
           });
         const platformCommand: string = os.platform() === "win32" ? "findstr /i" : "egrep"
         ids.map((id: string) => {

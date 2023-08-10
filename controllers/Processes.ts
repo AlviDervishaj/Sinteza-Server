@@ -312,7 +312,7 @@ export class Processes {
       // only keep usernames that are not running
       const botUsernames: string[] = [];
       // push to array of usernames if process.username does not have a status of running or waiting.
-      data.formData.usernames[0].split(',').forEach((_username: string) => {
+      data.formData.usernames.forEach((_username: string) => {
         if (names.has(_username)) {
           if (names.get(_username) === "RUNNING" || names.get(_username) === "WAITING") {
             connection.emit<EmitTypes>("create-processes-message", `[ERROR] ${_username} is already running...`);
@@ -338,7 +338,7 @@ export class Processes {
         const _process = new Process(
           data.formData.devices[index],
           _username,
-          data.membership[index],
+          data.memberships[index],
           data.status,
           "",
           0,
@@ -428,7 +428,7 @@ export class Processes {
         const getPidsCmd: ChildProcessWithoutNullStreams = spawn(`${getPidsCommand} ${getPidsPath}`, { shell: true });
         getPidsCmd.stdout.on('data', (data: string | Buffer) => {
           const result: string = data.toString('utf-8');
-          if (result.includes("--config C:\\Users\\Ermisa\\Documents\\repos\\Sinteza\\server\\accounts")) {
+          if (result.includes("--config C:\\Users\\Perdorues\\Documents\\GitHub\\server\\accounts")) {
             const results: string[] = result.split("\n");
             results.forEach((res: string) => {
               if (res.includes(`${path.join(process.cwd(), 'Bot', 'run.py')} --config ${path.join(process.cwd(), 'accounts', _process.username)}`)) {
@@ -443,10 +443,6 @@ export class Processes {
         const c = `adb -s ${_process.device.id} shell dumpsys battery | ${platformCommand} "level: "`;
         let _battery: string = "X";
         exec(c, (error: ExecException | null, stdout: string) => {
-          if (error) {
-            console.log({ error });
-            return;
-          }
           if (stdout.includes(`device '${_process.device.id}' not found`)) {
             _battery = "X";
           }
@@ -570,11 +566,11 @@ export class Processes {
     connection.on<EventTypes>("stop-process", (_username: string) => {
       const p = processes.find((process) => process.username === _username);
       if (p) {
-        if(p.pid){
-          try{
+        if (p.pid) {
+          try {
             execSync(`taskkill /F /PID ${p.pid}`);
           }
-          catch (e){
+          catch (e) {
             return;
           }
         }
@@ -608,15 +604,14 @@ export class Processes {
 
     // get all devices
     connection.on<EventTypes>("get-devices", () => {
-      let output: string = "";
+      let output: string[] = [];
       spawn('adb devices', { shell: true }).stdout.on('data', (_output: string | Buffer) => {
-        output = _output.toString('utf-8').replace("List of devices attached", "").replace("device", "").replace("\t", "")
+        output = _output.toString('utf-8').replace("List of devices attached", "").split("\n").filter(e => e).map((el: string) => el.replace("\t", " ").replace("device", "").replace("\r", "").replace("unauthorized", "").trim()).filter(e => e)
         return;
       })
       setTimeout(() => {
-        const ids: string[] = output.trim()
-          .split("\n")
-          .map((d) => {
+        const ids: string[] = output
+          .map((d: string) => {
             const temp = d.replace("\r", "");
             const _t_stripped_temp = temp.replace("\t", "");
             return _t_stripped_temp.replace("device", "");
@@ -628,16 +623,17 @@ export class Processes {
             if (key === id) {
               const command = `adb -s ${key} shell dumpsys battery | ${platformCommand} "level: "`;
               let _battery: string = "X";
-              exec(command, (error: ExecException | null, stdout: string) => {
-                if (error) {
-                  console.log({ error });
-                  return;
-                }
-                if (stdout.includes(`device '${key}' not found`)) {
-                  _battery = "X";
-                }
-                else _battery = `${stdout.trim().split(":")[1]}%`.trim();
-              });
+              try {
+                exec(command, (error: ExecException | null, stdout: string) => {
+                  if (stdout.includes(`device '${key}' not found`)) {
+                    _battery = "X";
+                  }
+                  else _battery = `${stdout.trim().split(":")[1]}%`.trim();
+                });
+              }
+              catch (e) {
+
+              }
               const a: Process | undefined = processes.find((_p: Process) => _p.device.id === key && _p.device.name === value);
               devices.push(new Device(key, value, _battery, a ? { username: a.username, configFile: a.configFile } : null));
             }
