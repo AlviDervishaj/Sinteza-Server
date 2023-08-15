@@ -4,26 +4,27 @@ import sys
 from datetime import datetime, timedelta
 
 
-def logger(x): return print(x, flush=True)
+def logger(x):
+    return print(x, flush=True)
 
 
 data = json.loads(sys.stdin.read())
 
-if data['username'] == '' or data['username'] is None:
+if data["username"] == "" or data["username"] is None:
     logger("Please enter a valid username.")
     exit()
-if data['following_now'] is None:
-    data['following_now'] = 0
+if data["following_now"] is None:
+    data["following_now"] = 0
     exit()
-if data['followers_now'] is None:
-    data['followers_now'] = 0
+if data["followers_now"] is None:
+    data["followers_now"] = 0
     exit()
 
 
-if type(data['following_now']) == str:
-    data['following_now'] = int(data['following_now'])
-if type(data['followers_now']) == str:
-    data['followers_now'] = int(data['followers_now'])
+if type(data["following_now"]) == str:
+    data["following_now"] = int(data["following_now"])
+if type(data["followers_now"]) == str:
+    data["followers_now"] = int(data["followers_now"])
 
 
 try:
@@ -33,12 +34,12 @@ except ImportError:
         "[ERROR] If you want to use telegram_reports, please type in console: 'pip3 install gramaddict[telegram-reports]'"
     )
 
-sessionPath = os.path.join(os.path.dirname(
-    os.path.dirname(__file__)), 'accounts', data['username'])
+sessionPath = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "accounts", data["username"]
+)
 
 
-class GenerateReports():
-
+class GenerateReports:
     def run(self, username, followers_now, following_now):
         self.followers_now = followers_now
         self.following_now = following_now
@@ -49,13 +50,13 @@ class GenerateReports():
             return logger(text)
 
         if username is None:
-            logger(
-                "[ERROR] You have to specify an username for getting reports!")
+            logger("[ERROR] You have to specify an username for getting reports!")
             return None
-        file = os.path.join(sessionPath, 'sessions.json')
+        file = os.path.join(sessionPath, "sessions.json")
         if not os.path.exists(file):
             logger(
-                "[ERROR] You have to run the bot at least once to generate a report!")
+                "[ERROR] You have to run the bot at least once to generate a report!"
+            )
             return None
 
         with open(file) as json_data:
@@ -130,11 +131,9 @@ class GenerateReports():
                 int
             ) - dailySummary["followers"].astype(int).shift(1)
         else:
-            dailySummary["followers_gained"] = dailySummary["followers"].astype(
-                int)
+            dailySummary["followers_gained"] = dailySummary["followers"].astype(int)
         dailySummary.dropna(inplace=True)
-        dailySummary["followers_gained"] = dailySummary["followers_gained"].astype(
-            int)
+        dailySummary["followers_gained"] = dailySummary["followers_gained"].astype(int)
         dailySummary["duration"] = dailySummary["duration"].astype(int)
 
         followers_before = int(df["followers"].iloc[-1])
@@ -142,7 +141,7 @@ class GenerateReports():
         statString = {
             "overview-followers": f"{followers_now} ({followers_now - followers_before:+})",
             "overview-following": f"{following_now} ({following_now - following_before:+})",
-            "last-session-activity-botting": f"{str(df['duration'].iloc[-1].astype(int))}",
+            "last-session-activity-botting": f'{str(df["duration"].iloc[-1].astype(int))}',
             "last-session-activity-likes": f"{str(df['likes'].iloc[-1])}",
             "last-session-activity-follows": f"{str(df['followed'].iloc[-1])}",
             "last-session-activity-unfollows": f"{str(df['unfollowed'].iloc[-1])} ",
@@ -160,7 +159,7 @@ class GenerateReports():
             "weekly-average-follows": f"{str(int(dailySummary['followed'].tail(7).mean()))}",
             "weekly-average-unfollows": f"{str(int(dailySummary['unfollowed'].tail(7).mean()))}",
             "weekly-average-stories-watched": f"{str(int(dailySummary['watched'].tail(7).mean()))}",
-            "weekly-average-botting": f"{str(int(dailySummary['duration'].tail(7).mean()))}"
+            "weekly-average-botting": f"{str(int(dailySummary['duration'].tail(7).mean()))}",
         }
         try:
             r = telegram_bot_sendtext(json.dumps(statString))
@@ -169,5 +168,8 @@ class GenerateReports():
 
 
 generatedReports = GenerateReports()
-generatedReports.run(username=data["username"],
-                     followers_now=data["followers_now"], following_now=data["following_now"])
+generatedReports.run(
+    username=data["username"],
+    followers_now=data["followers_now"],
+    following_now=data["following_now"],
+)

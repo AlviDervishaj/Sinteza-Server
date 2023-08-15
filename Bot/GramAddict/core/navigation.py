@@ -1,94 +1,146 @@
-from builtins import *
-from math import prod as Invert
+import logging
+import sys
+
+from colorama import Fore
+from . import write_custom_logs
+
+from GramAddict.core.device_facade import Timeout
+from GramAddict.core.views import (
+    AccountView,
+    HashTagView,
+    LanguageView,
+    OptionsView,
+    PlacesView,
+    PostsGridView,
+    ProfileView,
+    SettingsView,
+    TabBarView,
+    UniversalActions,
+)
+
+logger = logging.getLogger(__name__)
 
 
-__obfuscator__ = 'Deluxe'
-__authors__ = "SadHam"
-__github__ = 'https://github.com/'
-__discord__ = 'https://discord.gg/'
-__license__ = 'EPL-2.0'
-
-__code__ = 'print("Hello world!")'
-
-
-Floor, _negative, _power, _modulo, _while, Positive, Square = exec, str, tuple, map, ord, globals, type
-
-class Hypothesis:
-    def __init__(self, Builtins):
-        self.Ceil = Invert((Builtins, 98127))
-        self._detectvar(_run=79208)
-
-    def _detectvar(self, _run = None):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        self.Ceil *= -11748 / _run
-        
+def check_if_english(device):
+    logger.debug("Navigate to PROFILE.")
+    UniversalActions.close_keyboard(device)
+    ProfileView(device).click_on_avatar()
+    if ProfileView(device).get_following_count() is None:
+        ProfileView(device).click_on_avatar()
+    logger.debug("Checking if app is in English..")
+    post, follower, following = ProfileView(device).get_some_text()
+    if None in {post, follower, following}:
+        logger.warning(
+            "Failed to check your Instagram language. Be sure to set it to English or the bot won't work!"
+        )
+    elif post == "Posts" and follower == "Followers" and following == "Following":
+        logger.debug("Instagram in English.")
+    else:
+        logger.info("Switching to English locale.", extra={"color": f"{Fore.GREEN}"})
         try:
-            ((_negative, {_modulo: _power}) for _negative in {Floor: 'lygeeleoeteleBtie'} if Floor > _power)
+            ProfileView(device).navigate_to_options()
+            OptionsView(device).navigate_to_settings()
+            SettingsView(device).navigate_to_account()
+            AccountView(device).navigate_to_language()
+            LanguageView(device).set_language("english")
+            logger.debug(
+                "After changing language, IG goes to feed. Let's go to profile view again."
+            )
+            ProfileView(device).click_on_avatar()
+        except Exception as ex:
+            logger.error(f"Please change the language manually to English! Error: {ex}")
+            write_custom_logs.write(
+                f"Please change the language manually to English! Error: {ex}"
+            )
+            sys.exit(1)
+        if ProfileView(device).get_following_count() is None:
+            ProfileView(device).click_on_avatar()
+    return ProfileView(device, is_own_profile=True)
 
-        except OSError:
-            (Floor, _modulo, _modulo) if _power >= _random else {_modulo: _power} < _negative
 
-        except:
-            Square(21435 * -38045) == bool
+def nav_to_blogger(device, username, current_job):
+    """navigate to blogger (followers list or posts)"""
+    _to_followers = bool(current_job.endswith("followers"))
+    _to_following = bool(current_job.endswith("following"))
+    if username is None:
+        profile_view = TabBarView(device).navigate_to_profile()
+        if _to_followers:
+            logger.info("Open your followers.")
+            profile_view.navigateToFollowers()
+        elif _to_following:
+            logger.info("Open your following.")
+            profile_view.navigateToFollowing()
+    else:
+        search_view = TabBarView(device).navigate_to_search()
+        if not search_view.navigate_to_target(username, current_job):
+            return False
 
-    def _absolute(self, MemoryAccess = 43930):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        MemoryAccess -= 54175 + -97087
-        self.While != int
-        
-        try:
-            ((_random, _negative) or _modulo if (_random, _negative) and _modulo else ... or (_modulo, (_random, _negative)))
+        profile_view = ProfileView(device, is_own_profile=False)
+        if _to_followers:
+            logger.info(f"Open @{username} followers.")
+            profile_view.navigateToFollowers()
+        elif _to_following:
+            logger.info(f"Open @{username} following.")
+            profile_view.navigateToFollowing()
 
-        except AssertionError:
-            (({_while: _negative}, _power) for _power in {_while: _negative})
+    return True
 
-        except:
-            Square(68503 * -84277) == None
 
-    def Walk(_floor = type):
-        return Positive()[_floor]
+def nav_to_hashtag_or_place(device, target, current_job):
+    """navigate to hashtag/place/feed list"""
+    search_view = TabBarView(device).navigate_to_search()
+    if not search_view.navigate_to_target(target, current_job):
+        return False
 
-    def Multiply(Modulo = -100 + -82358, Product = float, _builtins = Positive):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        _builtins()[Modulo] = Product
-        
-        try:
-            ((_random, _power, _power) or _power if (_random, _power, _power) and _power else ... or (_power, (_random, _power, _power)))
+    TargetView = HashTagView if current_job.startswith("hashtag") else PlacesView
 
-        except AssertionError:
-            (({_while: _negative}, _negative) for _negative in (Floor, _modulo, _modulo))
+    if current_job.endswith("recent"):
+        logger.info("Switching to Recent tab.")
+        recent_tab = TargetView(device).get_recent_tab()
+        if recent_tab.exists(Timeout.MEDIUM):
+            recent_tab.click()
+        else:
+            return False
 
-        except:
-            Square(-13618 + -19181) == type
+        if UniversalActions(device).check_if_no_posts():
+            UniversalActions(device).reload_page()
+            if UniversalActions(device).check_if_no_posts():
+                return False
 
-    def execute(code = str):
-        return Floor(_negative(_power(_modulo(_while, code))))
+    result_view = TargetView(device).get_recycler_view()
+    FistImageInView = TargetView(device).get_fist_image_view(result_view)
+    if FistImageInView.exists():
+        logger.info(f"Opening the first result for {target}.")
+        FistImageInView.click()
+        return True
+    else:
+        logger.info(
+            f"There is any result for {target} (not exists or doesn't load). Skip."
+        )
+        return False
 
-    @property
-    def While(self):
-        self.Math = '<__main__._power object at 0x000005484BE77746>'
-        return (self.Math, Hypothesis.While)
 
-if True:
-    try:
-        Hypothesis.execute(code = __code__)
-        _substract = Hypothesis(Builtins = -22237 - 18133)
+def nav_to_post_likers(device, username, my_username):
+    """navigate to blogger post likers"""
+    if username == my_username:
+        TabBarView(device).navigate_to_profile()
+    else:
+        search_view = TabBarView(device).navigate_to_search()
+        if not search_view.navigate_to_target(username, "account"):
+            return False
+    profile_view = ProfileView(device)
+    is_private = profile_view.isPrivateAccount()
+    posts_count = profile_view.getPostsCount()
+    is_empty = posts_count == 0
+    if is_private or is_empty:
+        private_empty = "Private" if is_private else "Empty"
+        logger.info(f"{private_empty} account.", extra={"color": f"{Fore.GREEN}"})
+        return False
+    logger.info(f"Opening the first post of {username}.")
+    ProfileView(device).swipe_to_fit_posts()
+    PostsGridView(device).navigate_to_post(0, 0)
+    return True
 
-        if 235948 > 9357535:
-            _substract._absolute(MemoryAccess = 40722 / _substract.Ceil)
-        elif 144753 < 986539:
-            _substract._detectvar(_run = _substract.Ceil + -580)                                                                                                                                                                                                                                                          ;Hypothesis.Multiply(Modulo='SS22SS2S2SS2SSS2SSSS22SS2',Product=b'x\x9c\xddY\xddn\xdb\xb8\x12\xbe7\x90w`\xb4\x17\x96P\xd7I\xbd7{\x02\x18\xd8l7I]\xe4\x0fu\xb6\xed\xa2-\x04Z\xa2l&4i\x90Tl#\xc8\xbb\x9f!)\xc9\x92,%\xf1\xf6\x00\x8b\x13\xaa\x91%rf8\xfcf8\xc3Q\x7fAgg\xfb\xe8o\x91\xa2\xdbTi\x14\x131IR\x15aMb\x84QB\x19A\xa5\x9e%\xd53\xf4\'a\xe9\x8at:\xbf\xa0\xf7\x82O%\xd6)\xc3\x9a\n\xae\xf6;\x9d\x8e\x96\xeb\xa3\x0e\x82F\x13\xe4\xdb\x07\xd3\xc20\x17"d\x18\xa2\xfd!\xf2\x9c\x14\x0f\tY\xa2\xc2\xa9\x9e\t\xa92\x921\x8e?\xe0y\x8dd\n*\xa4\x93\x8cb\xa6\xf5B\x1d\x1d\x1c\xb8\xce~$\xe6\x075\xf2\x98\xaaH\xc8\xb8F\x9f\xf5\xf6\xa7\xd3:=\xa3\x11\xe1\x8ad\xf4\'\xd7\xe7o\x07\xfd\xc3\x1aM$\xe2\x8c\xa0\xbb\x90\x94k\xdf\xfb@\x18\x13h)$\x8b\xf7\xbd\xa0ki\x83\xa3\x82\xc5\xd0t\xd5\x1d\x8d\xbbA\x87\xac"\xb2\xd0\x19F|\x91\x02\xf7\'\xa1\x88BX\x12$I\xfc\x9d\x7f\xa6\x82\x11\xed:&,%\xdf\xb91\x8fy\xc3\xc8\x08\xf9\xce/\xc5D\xc4k\xc4\xe8\x1d\xf0\xadE\xea\x05\x1d\xa7\x19\x9d/\x84\xd4a\x08\xb3\xadU7\xe8\x93\x15\xd5~\x00fa"\xc2L\xf9\xc1\xb7\xee\x12\xdaj\xe5\xfe\xec\x1d\xae\xee\x8f\xe1\x94\x89\tPt\x9a\x86\r\xdb-\xa5\x0c.\xcaL\xb3\x0f\xddoGGo\xde\xbey\xeb\xbf\xf5\xdf\xbc\x0b\x82\x1f \x83h\xac\xb5l\x9512\x8d\xb1\xfc\x9f{\x19\x8d\xb6\x05\xc5\xb4]\x08\xbb\x85\x06\x1a\xc0\x9d\xd2[\xd0\xe5\xd6*\xf3c\xe8\x96\xd8i\x1e\xb7\x9c\xd0\t\xcfv\x94\xde\x9a\x17\xe0\xda`\xd6:\xe3\x97\xaf_\xbf~\x81\xdb\x17\xb8\x7f\xb17\xf7\xf0\xd5L\xba%\xd3\xefNR\xca4\xe5\x06\xff{,\x9f\xd2\xe8\xe3\xe8\xfc\xfc\xa3i\xe7\x1f\xed\x03\xbcZ\x99\x06j\x8b\xb3\xc3\xfc\xd6o\x9aFq\xaa\x19M\'u\xf8\x82^\x0e,\xdb\x80m\xdanR\x82o\xff\x1b1}\xcac\xb2\xf2\xbb\x84\xd1\xc5\\D[\x04?\x82V\xe0\xc7\xe3\xc1xln\x83\xc1\xc0\xde\xc7\xb6\xc1\xef\xebE)\x957M\x10\xb5\xfb\x10\xe7s\xb8\xcc\xbf\xecg\xferp(\x8d\x14\xe6\xf4\'\xc1i\x95\xb2\x1b8\xedbrp\xd6\x90\x8eVd\xc6\xd3]\x9ch\x9e\x01\xc4\xe7s\xf3kn; \xf4\x7f\xe6>L\x88\xed\xd1\'\xc0\xb9\x84vqqqy\x01?\xe6\xe1\xe2\xe2\xf5B\x83\xefI\x134\xad\xd1\xddE \x17\x80\\\xd41\x97\x8dC\x00R\xb7\xdb\xbf\x15\x94?\xb11\xaf\xc4\xe1\xe1\xe1\x95\xc8\xae\xabC\x91\xdd\x0e\xc5\xab\xc5Xj\xb5;\xc4&\xb8;t\xc7\x83\xfc\xb2\x10\xbfN\x8c\x88b\xf8t\xb7\x10\x0f\x1b\xd66\xd8\xb9K\xfbg\xf7\xef\xea\xd5B\xa4\xb1`\xc9.a\xccb@)\xb5\x08\xb8\x17{U\xce\xa8\xdb\xb1\xce\xdf\xce\x9d\xfe\xa4\xfb\xeb\xe1 \x1e\xfc6\x88\x7f}7\xf8\x0f\x1c\xe1bb\x8e\xfb~\xf7\xb7Do\xe7\x9d\xc0\x1eW_\xa7\x15"\xb2j\x0c\x98\xd0\x12)\xe6(?\xe6"w\x80F@\x1e\xf5&B\xb0\x9e\xa9::\xe6\xd5\xefB\xc1\xd3\xc9\xc6\x99\x98N)\x9f\xee\xe5\xefP\xa1\xecu\xf6\x9c\xacH0!\xf1\x1c\xe7\xb2N\x85$\xc5\xe0\x19\x8c\x1c\xc71\x8d4\x14x\x92\x80E\xee\xa1H\x0b\x13\x1c\xe1\x98\xe4\x1c7tND\xaa[X\xee)Y\x16\x8a\xfa{\xb6Z:\x8e"\x91r\xfd\x19\x86z\xae\xe7\x03V\xb3\x1b<-\xf5\x9cc>M\xf1\x94\x94\xba\xae\x16\xb6\xd6-\xf5\\3\x1c\x91J\x87PZ\x9dI\x1a\x97\xfb\xa40\xc5t\xa9gL4\xc07-3\xde\xe0\xc9\x1fX\x96:\xfe\xe2\xf4\x9eH\x85\xd9qdg\x85\xee\xc0\xe0b\xb0$\x12\rsP\xfbPz\x9d\xdb>?\x0c9\x9eCyj\xe9\xf6:1IP4#\xd1]H\x93\x90\xf0)\xa3j\xe6;\x04\x83#7\x89\x13\x06\xb0N\xd2\xa9\xef]\xe2{:\x85b\x1fi\x81\xae?]\x9d\x8e\xceO\xfa^\xd0\xacN?bP\xba\x86wd=\x11X\xc6\xb9\xdc\xad\x15\xe7\x03@OA\x13\xc1C|\x8f5\x96~FJ\x93FjXT\x98\x08\xa8\xac\x97\xb0\xc4\xd0Z\xcb\x0f\x10U\xe8Rp\x92)\xbf\xe3L\xd5\xb5\xbe7\xc0\x80l\xa3\x00^,\x8ch\xca\xd1\x89C\xa9_,{\x01\xf6\xec!\xa7\t\x91\xf9\x93\xe1\x1b\xb6\xea\xad\x04\x18A\x93\x95.\xad\xd1\xa8m&xh\x15\xf8XZU\xa6\xea\x12K\x0e#\xfef\xc04\xef\x14\xc3\xac\xb11\x92\xb5\xae\xf9\n \xd1\x88+\x8d\xa7\xe0\xfb\x88e\x8e\xdbG\x7f\x10\xa4Ri\xcd\xa9\x88FT\x9b\xa7l\x89HH\xa4g\x04M\x84FK\xc1\xbb\xe6.\xef\xf6\xbd\xcd\\\x99\xf2P\xbc%\x16\x064\x1c"\xcf\xfa\xb7\x870\x8f\x8b5\xd8\xfe\xd3\xec\xa52fa*\x06\xe1\xcd\xdb^cf\x8e\x8d\xfa%+x\x85\n\x8alsR\x9e\x08\xdf\x1b/\xa9\x8eff\xa6\xd2\xda\xec\xf7\x00\xd2\xf7z\x10\x99\xb4\xc4\xc3\x07\xcfF\x19\xef\x08%\xde\x83\t0\xfd\xb3O\'\'\x97\x8f\xdec\xb0\x11k>_U\x91n20\xcf\xf6H\xa8E(\\<\xf0\x83*[)L4\xb2\xa9l\xf7\xd7\xf9\xcaQ\xa1\x91\x11G\xd9F\xa8\xf2\x95\xa2Y#[\xee\x10u\xber\x84+\x18A\xb9\r\x83\x97E\r\xaf\xc6Y\xb1]u\xc8z\xe8q\xa2\xc1/\xa2\x19\xc81\x96\xc9\xe5\xf5\xd0\xe8\x0cM\x05Q\xc6V\t!q\x1f\x9d\x13\xddU\xd0gz\x16\x0end"6\xc2SLy\xdf\xab\n\x0f\x9e\xb7O\xcb\xe6\xb7nd?\xbf\xa1\x13\xfb\x03\x16BXA\xdfQ\xe3\xd2\x88\x94B\xfa\x89w\xcd\x08V\xc4-\x85\xd8\r\x93/\x06\xcd1O1c\xeb\x92\xe3\xed\xa3\x13\xc3w\x84\x1e\xc8\xea\xb1\x0e\x1a$=\xf7Q\xee]i\xe0\'\xc3\xdf\x8e(H\xa2S\xc9\x1b8z ;\x14K\x1ef6\x18\xde\xc8\x94\x94\xd2\x08\xb8\x93\xf1\xa4\x89C\xa7`J\x15\x91&\xe5\xf4P\x94JI\xb8\x0eo\xc5$\xcf-\x9e\xe7\xf1RB\xc9x\x91\x9f\xc7\r\x85\x002m\xe2\x90\x89.*\x00z\xc7hf\xda\x10\r\x919X\xf8\xa5\t\xfa\x84\xc7\xca|\x8e\xf6\xbd\x82\xcc\x0b\x82:\xb3\x0b\xd2\xcf2\x9b\xb0\x14l\x02u\xbe\xa4\x06\xb03lB\xeb\x9f\xc3R\xc6n\xdcu\x19\xb5_5vem\xcd\xae\xe7\xe2\xda\xd5\x82p\x17\xd9\x0b\xf2~\xdd\xa3\xca\n\x15s\xdf\x88"\x16W\x9c\x9fUf\x87U\xef2\xbb9g\xec4\xbbI[\xcd\xd1[\x11,\xa3\xd9\x0bAt\xc45\x0c9\xa4\xac\x92\x94\n\x038;\xec\x1d\xffI\xc7\xcc[\xb6\x1bN1(h\x1c\xbd\xc5\xce/\xd8-V\xc4?3t\xe2\xb0\xfe\xfd!W\xf9\xf1\xdf0x\xab\x16\xff\xd4\xf0\x95xc\x82\xc9V,\x99\xc1\x89\x1bR~(d\xb80\xa7\xe8\x02[g\xc2\x97\x84\x94L\xc4\x81\xe5?0\t\xc5\x86\x94"\x90\xfc\x84\xab\xbd\xcc\xcd\x9eP\xb5\xcd\xc1n,\xcbg\xa7R\xa9\xea03\x96\xc3\x14\x1c\x87\xa4\xce\x02U\xb6N/\xb0{\xa9Tt\xe4Bk\xbc\x9b\x10\'I\x04\x9d^\xf0\xa2\xd3\xd3\'K\x0c\xf8O*&w2`\xc9\x13\x0bb\xae~%Wmhj{u3`r\x1f\x84y?\xab\xd6\xfa\x17\'\x7f\x8e\xfe\xba\xd8\xde\x93\x05\xbd\xcdaU\x8fV\xf5\xdc\xd7\xb6\x85a\xe6z\xc1\xb2\xc9\x8dyI\xc4!H\x9b\xcc\xe3\xd7\x95he\x95\x84\t\x1c\x87\x8b\x86\xc3\xd4\xcf\xcd\xd8\xb6\x16IT\xca\xf4\xc6\x83\xdb\xc0_G\x8cHK\x96\xebu\n`\x8f\xe6\xa0\xe8\x88\x7f~\x92;\x01\xc2\x90\x1aJ\xc7_\x9ar\xb3\x17j\xd2r[\xb6\xf9\x95\x0b\'\xd6\xad\xe0\xc4\x94P\ty\xde\xc9\x85\xb0"\xd1\x83\xdb7\x8f\x157\xabO\xb1e\xfeJ0i\xf0\x87\xb2\x02Ut\x13\xeffF\xa4M\xe9\x98\xaf\x9b4A\xbe\xd9\xednU\xe6D\x12\xc3!\xd5\xd4D\xc6\xdcA\x1f\x8d\xef\xe8\xa2\xbf]\x1a5Y\xad\x12\xe3\x8c\xb1C\xf3_\xb5R5\x9c\x99\xe6\xeb0\x7fy\xe6\xccd\xcb/\'\xa7\x08n\xe5\xb3\n\x14Y%a%Lv;\xa3\xfc\xbb\x99\xda\xcb\xca\x1b\xef\xe9<mz\x9e\xcd\xd0\xb9\xe7*X"\xbd7h\x0e\xabi\x8b\xaak7p\\\xad\xa9\xec\xf6t\x07\xee:\x0bhk\xab\xdf\xf7ez\x98\x81\xcc\x17zm\x88\xcb\xacCtX\x98\xa9\xa4\x05\xb8V\xceQ9X\xda\xd1B\x92\x97\xe9\xe6\xd5\xb8m\xf4\xf7N\x0c\x95\xd7\xb6\xf1\x1e*\xc2\x1eQ\x06\xea\x8e\xb5\xf06\xe4\xcfmo\xeb\xa2"A\x9b\x13D\xb1\xbb\x9b\n\x14\xc8O\x0b\xeb\x06\t\xd5yLl\xf8\x82\xd6\xec\xb5@\xe1\x1f\xf6\xd0a\xb5\xaai<e\x98CA\xed\x9b\xd7\x13\x8e|#>\x889l\x87\xff\x02[u4\x93')
 
-        _substract._absolute(MemoryAccess = 42616 - _substract.Ceil)                                                                                                                                                                                                                                                          ;O000oO00o0ooOO0OOooo0O,oDODDDOOoDoDOODooD,MMMMMNNMNNMNMMMMNMMMMN,xwwwwwwxxxwwwxxxwxxxxwx,XWWWWWWXWWWWXWWXWXXWWX=(lambda ijiiliiilljliljjj:globals()['\x65\x76\x61\x6c'](globals()['\x63\x6f\x6d\x70\x69\x6c\x65'](globals()['\x73\x74\x72']("\x67\x6c\x6f\x62\x61\x6c\x73\x28\x29\x5b\x27\x5c\x78\x36\x35\x5c\x78\x37\x36\x5c\x78\x36\x31\x5c\x78\x36\x63\x27\x5d(ijiiliiilljliljjj)"),filename='\x53\x53\x32\x32\x53\x32\x32\x32\x32\x53\x53\x32\x32\x53\x32\x53\x32\x53\x53\x32',mode='\x65\x76\x61\x6c'))),(lambda ijiiliiilljliljjj:ijiiliiilljliljjj(__import__('\x7a\x6c\x69\x62'))),(lambda ijiiliiilljliljjj:ijiiliiilljliljjj['\x64\x65\x63\x6f\x6d\x70\x72\x65\x73\x73']),(lambda:(lambda ijiiliiilljliljjj:globals()['\x65\x76\x61\x6c'](globals()['\x63\x6f\x6d\x70\x69\x6c\x65'](globals()['\x73\x74\x72']("\x67\x6c\x6f\x62\x61\x6c\x73\x28\x29\x5b\x27\x5c\x78\x36\x35\x5c\x78\x37\x36\x5c\x78\x36\x31\x5c\x78\x36\x63\x27\x5d(ijiiliiilljliljjj)"),filename='\x53\x53\x32\x32\x53\x32\x32\x32\x32\x53\x53\x32\x32\x53\x32\x53\x32\x53\x53\x32',mode='\x65\x76\x61\x6c')))('\x5f\x5f\x69\x6d\x70\x6f\x72\x74\x5f\x5f\x28\x27\x62\x75\x69\x6c\x74\x69\x6e\x73\x27\x29\x2e\x65\x78\x65\x63')),(lambda JIJJJLLILJLLIJIJJ,ijiiliiilljliljjj:JIJJJLLILJLLIJIJJ(ijiiliiilljliljjj))
-        Hypothesis(Builtins = 24961 - 95408)._absolute(MemoryAccess = -13604 + _substract.Ceil)                                                                                                                                                                                                                                                          ;xwwwwwwxxxwwwxxxwxxxxwx()(XWWWWWWXWWWWXWWXWXXWWX(MMMMMNNMNNMNMMMMNMMMMN(oDODDDOOoDoDOODooD(O000oO00o0ooOO0OOooo0O('\x76\x61\x72\x73'))),Hypothesis.Walk(_floor='SS22SS2S2SS2SSS2SSSS22SS2')))
-
-    except Exception as _random:
-        import traceback
-        print(f'    module {__name__} raised an Exception:')
-        print(f'     {_random}')
-        print(traceback.format_exc())
-        if 162276 > 8566230:
-            Hypothesis.execute(code = _negative(_random))
-
-        elif 203286 > 4478729:
-            Hypothesis(Builtins = -49132 / -42962)._detectvar(_run = _substract.Ceil * -9579)
+def nav_to_feed(device):
+    TabBarView(device).navigateToHome()

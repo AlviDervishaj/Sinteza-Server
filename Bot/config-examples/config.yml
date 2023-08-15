@@ -1,5 +1,5 @@
 ##############################################################################
-# For more information on parameters, refer to:
+# For more information on parameters, refer to: 
 # https://docs.gramaddict.org/#/configuration?id=configuration-file
 #
 # Note: be sure to comment out any parameters not used by adding a # in front
@@ -8,9 +8,9 @@
 # General Configuration
 ##############################################################################
 
-username: test # you have to put your IG name here!
-password: test
-device: test
+username: myusername # you have to put your IG name here!
+password: yourpassword
+# device: put_your_device_id_there # 'adb devices' in the console to know it.  It's needed only if you have more than 1 device connected
 app-id: com.instagram.android
 
 cloned-app-mode: 1
@@ -37,20 +37,20 @@ truncate-sources: 2-5
 ##############################################################################
 
 ## Interaction (active jobs)
-blogger-followers: ""
-# blogger-following: [username1, username2]
-# blogger-post-likers: [username1, username2]
-# blogger: [username1, username2]
-hashtag-likers-top: ""
-# hashtag-likers-recent: [hashtag1, hashtag2]
-# hashtag-posts-top: [hashtag1, hashtag2]
-# hashtag-posts-recent: [hashtag1, hashtag2]
-# place-posts-top: [place1, place2]
-# place-posts-recent: [place1, place2]
-# place-likers-top: [place1, place2]
-# place-likers-recent: [place1, place2]
-# interact-from-file: [usernames1.txt 10-15, usernames2.txt 3]
-# posts-from-file: posts.txt
+blogger-followers: [ username1, username2 ]
+blogger-following: [ username1, username2 ]
+blogger-post-likers: [ username1, username2 ]
+blogger: [ username1, username2 ]
+hashtag-likers-top: [ hashtag1, hashtag2 ]
+hashtag-likers-recent: [ hashtag1, hashtag2 ]
+hashtag-posts-top: [ hashtag1, hashtag2 ]
+hashtag-posts-recent: [ hashtag1, hashtag2 ]
+place-posts-top: [ place1, place2 ]
+place-posts-recent: [ place1, place2 ]
+place-likers-top: [ place1, place2 ]
+place-likers-recent: [ place1, place2 ]
+interact-from-file: [usernames1.txt 10-15, usernames2.txt 3]
+posts-from-file: posts.txt
 feed: 2-5 # is the number of likes you will give in feed
 # welcoming: 3-5 # welcoming new members with sentences in pm_welcome.txt inside account folder
 
@@ -66,25 +66,25 @@ mute-stories-after-follow: false
 ## Unfollow (unfollow jobs)
 unfollow: 10-20
 unfollow-any: 10-20
-unfollow-non-followers: "0"
+unfollow-non-followers: 10-20
 unfollow-any-non-followers: 10-20
 unfollow-any-followers: 10-20
-# unfollow-from-file: [usernames1.txt 7-15, usernames2.txt 6]
+unfollow-from-file: [usernames1.txt 7-15, usernames2.txt 6]
 
 ## Special modifier for unfollow jobs
 sort-followers-newest-to-oldest: false
 unfollow-delay: 15
-unfollow-skip-limit: "0"
+unfollow-skip-limit: 10
 
 ## Remove followers (active jobs)
-# remove-followers-from-file: [remove1.txt 5-10, remove2.txt 6]
+remove-followers-from-file: [remove1.txt 5-10, remove2.txt 6]
 
 ## Special modifier for remove followers
 delete-removed-followers: true
 
 ## Post Processing
 # analytics: false # no more supported
-telegram-reports: true # for using telegram-reports you have also to configure telegram.yml in your account folder
+telegram-reports: false # for using telegram-reports you have also to configure telegram.yml in your account folder
 
 ## Special actions
 # pre-script: pre_script_path_here
@@ -141,7 +141,7 @@ end-if-pm-limit-reached: false
 # Scheduling
 ##############################################################################
 
-working-hours: [8.00-17.00]
+working-hours: [10.15-16.40, 18.15-22.46]
 time-delta: 10-15
 repeat: 280-320
-total-sessions: -1 # -1 or commented for infinite sessions
+total-sessions: 1 # -1 or commented for infinite sessions

@@ -1,4 +1,10 @@
-import { ChildProcessWithoutNullStreams, ExecException, exec, spawn, execSync } from "node:child_process";
+import {
+  ChildProcessWithoutNullStreams,
+  ExecException,
+  exec,
+  spawn,
+  execSync,
+} from "node:child_process";
 import { Socket } from "socket.io";
 import {
   ConfigNames,
@@ -8,14 +14,12 @@ import {
   CreateProcessData,
   EmitTypes,
   EventTypes,
-  ServerActionSessionData,
   SessionConfigSkeleton,
-  SessionProfileSkeleton
+  SessionProfileSkeleton,
+  ProcessSkeleton,
+  ServerActionSessionData,
+  WorkerSessions,
 } from "../helpers/Types";
-import os from "node:os";
-import { Process } from "../helpers/classes/Process";
-import { startBotChecks } from "../helpers/Processes";
-import path from "node:path";
 import {
   checkBotFinished,
   checkOutputCrashes,
@@ -23,28 +27,34 @@ import {
   checkOutputErrors,
   checkOutputLogs,
   checkOutputSleeping,
-  checkOutputWarnings
+  checkOutputWarnings,
 } from "../helpers/ServerActions";
+import os from "node:os";
+import { Process } from "../helpers/classes/Process";
+import { startBotChecks } from "../helpers/Processes";
+import path from "node:path";
 import { Device } from "../helpers/classes/Device";
 import { DevicesList } from "../helpers/Devices";
 import { clearTimeout } from "node:timers";
-
-export let processes: Process[] = [];
-const devices: Device[] = [];
-const schedules = new Map<string, NodeJS.Timeout>();
-export const names = new Map<string, "RUNNING" | "WAITING" | "STOPPED" | "FINISHED">();
-
-const sessions = new Map<string, ConfigRowsSkeleton>();
+import { Worker } from "node:worker_threads";
+import { readFileSync } from "node:fs";
 
 // Processes
 export class Processes {
   // list of connections
   private connections: Socket[];
-  // a cmd and process username mapping
+  // a pid and process username mapping
   private relations: Map<string, string>;
+  // a name and result mapping
+  private results: Map<string, string | undefined>;
+  private processes: Process[] = [];
+  private devices: Device[] = [];
+  private schedules: Map<string, NodeJS.Timeout>;
+  private names: Map<string, "RUNNING" | "WAITING" | "STOPPED" | "FINISHED">;
+  private sessions: Map<string, ConfigRowsSkeleton>;
 
   // handle process schedule
-  handleProcessSchedule = (data: CreateProcessData) => {
+  handleProcessSchedule = (data: CreateProcessData): void => {
     const _process = new Process(
       data.formData.device,
       data.formData.username,
@@ -61,24 +71,30 @@ export class Processes {
       data.scheduled,
       data.jobs,
       "config.yml",
-      Date.now(),
+      Date.now()
     );
-    processes.push(_process);
+    this.processes.push(_process);
     const timeout: NodeJS.Timeout = setTimeout(() => {
       // process added to pool, now start it
       startBotChecks(data.formData, _process);
       // start it
       const command: string = os.platform() === "win32" ? "python" : "python3";
-      const _startBotData: { username: string, config_name: ConfigNames } = { username: _process.username, config_name: _process.configFile };
-      const cmd: ChildProcessWithoutNullStreams = spawn(`${command} ${path.join(process.cwd(),
-        'scripts', 'start_bot.py',)
-        }`,
+      const _startBotData: { username: string; config_name: ConfigNames } = {
+        username: _process.username,
+        config_name: _process.configFile,
+      };
+      const cmd: ChildProcessWithoutNullStreams = spawn(
+        `${command} ${path.join(process.cwd(), "scripts", "start_bot.py")}`,
         { shell: true }
       );
       cmd.stdin.write(JSON.stringify(_startBotData));
       cmd.stdin.end();
       cmd.stdout.on("data", (chunk: string | Buffer) => {
-        const output = chunk.toString('utf-8').split("\n").map((line: string) => line).join("\n");
+        const output = chunk
+          .toString("utf-8")
+          .split("\n")
+          .map((line: string) => line)
+          .join("\n");
         if (_process.result.includes(output)) return;
         checkOutputCrashes(output, _process);
         checkBotFinished(output, _process);
@@ -87,16 +103,19 @@ export class Processes {
         checkOutputLogs(output, _process);
         checkOutputSleeping(output, _process);
         checkOutputCritical(output, _process);
-        processes.map((proc: Process) => {
+        this.processes.map((proc: Process) => {
           if (proc.username === _process.username) {
             proc = _process;
-          }
-          else return proc;
-        })
-        names.set(_process.username, _process.status);
+          } else return proc;
+        });
+        this.names.set(_process.username, _process.status);
       });
       cmd.stderr.on("data", (chunk: string | Buffer) => {
-        const output = chunk.toString('utf-8').split("\n").map((line: string) => line).join("\n");
+        const output = chunk
+          .toString("utf-8")
+          .split("\n")
+          .map((line: string) => line)
+          .join("\n");
         if (_process.result.includes(output)) return;
         checkOutputCrashes(output, _process);
         checkBotFinished(output, _process);
@@ -105,36 +124,143 @@ export class Processes {
         checkOutputLogs(output, _process);
         checkOutputSleeping(output, _process);
         checkOutputCritical(output, _process);
-        names.set(_process.username, _process.status);
+        this.names.set(_process.username, _process.status);
       });
-      sessions.set(_process.username, _process.session);
-      processes.map((_p: Process) => _p.username === _process.username ? _process : _p);
+      this.sessions.set(_process.username, _process.session);
+      this.processes.map((_p: Process) =>
+        _p.username === _process.username ? _process : _p
+      );
     }, data.startsAt);
-    schedules.set(_process.username, timeout);
+    this.schedules.set(_process.username, timeout);
     return;
-  }
+  };
 
-  // update process
-  updateProcesses(_process: Process) {
-    processes = processes.filter((p: Process) => {
+  checkIsStopped(username: string): boolean {
+    // start process again.
+    // check if process exists
+    const prevProcess: Process | undefined = this.processes.find(
+      (p: Process) => p.username === username
+    );
+    // check its status
+    if (prevProcess) {
       if (
-        p.username === _process.username &&
-        p.device === _process.device
+        prevProcess.status === "WAITING" ||
+        prevProcess.status === "RUNNING"
       ) {
-        return _process;
-      } else return p;
-    })
+        return false;
+      }
+      return true;
+    }
+    return true;
   }
 
-  handleStartProcessAgain(data: CreateProcessData) {
-    if (names.has(data.formData.username)) {
-      if (names.get(data.formData.username) === "STOPPED" || names.get(data.formData.username) === "FINISHED") {
-        // start process again.
+  handleCreateProcess(data: CreateProcessData): void {
+    const _process = new Process(
+      data.formData.device,
+      data.formData.username,
+      data.membership,
+      data.status,
+      "",
+      0,
+      0,
+      0,
+      ConfigRows,
+      SessionConfigSkeleton,
+      SessionProfileSkeleton,
+      0,
+      data.scheduled,
+      data.jobs,
+      "config.yml",
+      Date.now()
+    );
+    // process added to pool, now start it
+    // eslint-disable-next-line prefer-const
+    startBotChecks(data.formData, _process);
+    setTimeout(() => {
+      // start it
+      const command: string = os.platform() === "win32" ? "python" : "python3";
+      const cmd: ChildProcessWithoutNullStreams = spawn(
+        `${command} ${path.join(process.cwd(), "scripts", "start_bot.py")}`,
+        { shell: true }
+      );
+      const _startBotData = {
+        username: _process.username,
+        config_name: _process.configFile,
+      };
+      cmd.stdin.write(JSON.stringify(_startBotData));
+      cmd.stdin.end();
+      cmd.stderr.on("data", (chunk: string | Buffer) => {
+        const output = chunk
+          .toString("utf-8")
+          .split("\n")
+          .map((line: string) => line)
+          .join("\n");
+        checkOutputCrashes(output, _process);
+        checkBotFinished(output, _process);
+        checkOutputWarnings(output, _process);
+        checkOutputErrors(output, _process);
+        checkOutputLogs(output, _process);
+        checkOutputSleeping(output, _process);
+        checkOutputCritical(output, _process);
+        this.processes.map((proc: Process) => {
+          if (proc.username === _process.username) {
+            proc = _process;
+          } else return proc;
+        });
+        this.names.set(_process.username, _process.status);
+      });
+      cmd.stdout.on("data", (chunk: string | Buffer) => {
+        const output = chunk
+          .toString("utf-8")
+          .split("\n")
+          .map((line: string) => line)
+          .join("\n");
+        if (_process.result.includes(output)) return;
+        checkOutputCrashes(output, _process);
+        checkBotFinished(output, _process);
+        checkOutputWarnings(output, _process);
+        checkOutputErrors(output, _process);
+        checkOutputLogs(output, _process);
+        checkOutputSleeping(output, _process);
+        checkOutputCritical(output, _process);
+        this.processes.map((proc: Process) => {
+          if (proc.username === _process.username) {
+            proc = _process;
+          } else return proc;
+        });
+        this.names.set(_process.username, _process.status);
+      });
+      this.sessions.set(_process.username, _process.session);
+      this.processes.push(_process);
+      return;
+    }, 200);
+  }
+
+  constructor() {
+    this.connections = [];
+    this.relations = new Map<string, string>();
+    this.results = new Map<string, string | undefined>();
+    this.devices = [];
+    this.schedules = new Map<string, NodeJS.Timeout>();
+    this.names = new Map<
+      string,
+      "RUNNING" | "WAITING" | "STOPPED" | "FINISHED"
+    >();
+    this.sessions = new Map<string, ConfigRowsSkeleton>();
+  }
+
+  // Add connection and event listeners
+  add(connection: Socket) {
+    this.connections.push(connection);
+    // Start bot again
+    connection.on<EventTypes>(
+      "start-process-again",
+      (data: CreateProcessData) => {
         const _process = new Process(
           data.formData.device,
           data.formData.username,
           data.membership,
-          data.status,
+          "RUNNING",
           "",
           0,
           0,
@@ -145,507 +271,588 @@ export class Processes {
           0,
           data.scheduled,
           data.jobs,
-          data.formData.config_name,
-          Date.now(),
+          "config.yml",
+          Date.now()
         );
-        processes = processes.filter((_proc: Process) => _proc.username !== data.formData.username)
-        const command: string = os.platform() === "win32" ? "python" : "python3";
-        const cmd: ChildProcessWithoutNullStreams = spawn(`${command} ${path.join(process.cwd(),
-          'scripts', 'start_bot.py',)
-          }`,
-          { shell: true }
-        );
-        const _startBotData = { username: _process.username, config_name: _process.configFile };
-        cmd.stdin.write(JSON.stringify(_startBotData));
-        cmd.stdin.end();
-        cmd.stderr.on("data", (chunk: string | Buffer) => {
-          const output = chunk.toString('utf-8').split("\n").map((line: string) => line).join("\n");
-          checkOutputCrashes(output, _process);
-          checkBotFinished(output, _process);
-          checkOutputWarnings(output, _process);
-          checkOutputErrors(output, _process);
-          checkOutputLogs(output, _process);
-          checkOutputSleeping(output, _process);
-          checkOutputCritical(output, _process);
-          processes.map((proc: Process) => {
-            if (proc.username === _process.username) {
-              proc = _process;
-            }
-            else return proc;
-          });
-          names.set(_process.username, _process.status);
-        });
-        cmd.stdout.on("data", (chunk: string | Buffer) => {
-          const output = chunk.toString('utf-8').split("\n").map((line: string) => line).join("\n");
-          if (_process.result.includes(output)) return;
-          checkOutputCrashes(output, _process);
-          checkBotFinished(output, _process);
-          checkOutputWarnings(output, _process);
-          checkOutputErrors(output, _process);
-          checkOutputLogs(output, _process);
-          checkOutputSleeping(output, _process);
-          checkOutputCritical(output, _process);
-          processes.map((proc: Process) => {
-            if (proc.username === _process.username) {
-              proc = _process;
-            }
-            else return proc;
-          })
-          names.set(_process.username, _process.status);
-        });
-        sessions.set(_process.username, _process.session);
-        processes.push(_process);
-        return;
-      }
-    }
-
-  }
-
-  handleCreateProcess(data: CreateProcessData) {
-    const _process = new Process(
-      data.formData.device,
-      data.formData.username,
-      data.membership,
-      data.status,
-      "",
-      0,
-      0,
-      0,
-      ConfigRows,
-      SessionConfigSkeleton,
-      SessionProfileSkeleton,
-      0,
-      data.scheduled,
-      data.jobs,
-      "config.yml",
-      Date.now(),
-    );
-    // process added to pool, now start it
-    // eslint-disable-next-line prefer-const
-    startBotChecks(data.formData, _process);
-    setTimeout(() => {
-      // start it
-      const command: string = os.platform() === "win32" ? "python" : "python3";
-      const cmd: ChildProcessWithoutNullStreams = spawn(`${command} ${path.join(process.cwd(),
-        'scripts', 'start_bot.py',)
-        }`,
-        { shell: true }
-      );
-      const _startBotData = { username: _process.username, config_name: _process.configFile };
-      cmd.stdin.write(JSON.stringify(_startBotData));
-      cmd.stdin.end();
-      cmd.stderr.on("data", (chunk: string | Buffer) => {
-        const output = chunk.toString('utf-8').split("\n").map((line: string) => line).join("\n");
-        checkOutputCrashes(output, _process);
-        checkBotFinished(output, _process);
-        checkOutputWarnings(output, _process);
-        checkOutputErrors(output, _process);
-        checkOutputLogs(output, _process);
-        checkOutputSleeping(output, _process);
-        checkOutputCritical(output, _process);
-        processes.map((proc: Process) => {
-          if (proc.username === _process.username) {
-            proc = _process;
+        const result: boolean = this.checkIsStopped(_process.username);
+        if (result) {
+          // remove process from pool
+          const proc: Process | undefined = this.processes.find(
+            (_p: Process) => _p.username === _process.username
+          );
+          if (proc) {
+            this.processes.splice(this.processes.indexOf(proc), 1);
           }
-          else return proc;
-        });
-        names.set(_process.username, _process.status);
-      });
-      cmd.stdout.on("data", (chunk: string | Buffer) => {
-        const output = chunk.toString('utf-8').split("\n").map((line: string) => line).join("\n");
-        if (_process.result.includes(output)) return;
-        checkOutputCrashes(output, _process);
-        checkBotFinished(output, _process);
-        checkOutputWarnings(output, _process);
-        checkOutputErrors(output, _process);
-        checkOutputLogs(output, _process);
-        checkOutputSleeping(output, _process);
-        checkOutputCritical(output, _process);
-        processes.map((proc: Process) => {
-          if (proc.username === _process.username) {
-            proc = _process;
-          }
-          else return proc;
-        })
-        names.set(_process.username, _process.status);
-      });
-      sessions.set(_process.username, _process.session);
-      processes.push(_process);
-      return;
-    }, 200);
-  }
-
-  constructor() {
-    this.connections = [];
-    this.relations = new Map<string, string>();
-  }
-
-  // Add connection and event listeners
-  add(connection: Socket) {
-    this.connections.push(connection);
-    // Start bot again
-    connection.on<EventTypes>("start-process-again", (data: CreateProcessData) => {
-      this.handleStartProcessAgain(data);
-    });
-
-    // Remove Schedule
-    connection.on<EventTypes>("remove-schedule", (_username: string) => {
-      if (schedules.has(_username)) {
-        const proc: Process | undefined = processes.find((_p: Process) => _p.username === _username);
-        if (proc) {
-          clearTimeout(schedules.get(_username));
-          proc.status = "STOPPED";
-          proc.scheduled = false;
-          names.set(_username, "STOPPED");
-          schedules.delete(_username);
-          processes.splice(processes.indexOf(proc), 1);
-          processes.push(proc);
-          connection.emit<EventTypes>("remove-schedule", `[INFO] Removed schedule for ${_username}`);
-        }
-        connection.emit<EventTypes>("remove-schedule", `[ERROR] Could not find bot for ${_username}`);
-      }
-      else {
-        connection.emit<EventTypes>("remove-schedule", "[INFO] Bot is not scheduled !");
-      }
-    });
-    connection.on<EventTypes>("create-processes", (data: BulkWriteData) => {
-      // only keep usernames that are not running
-      const botUsernames: string[] = [];
-      // push to array of usernames if process.username does not have a status of running or waiting.
-      data.formData.usernames[0].split(',').forEach((_username: string) => {
-        if (names.has(_username)) {
-          if (names.get(_username) === "RUNNING" || names.get(_username) === "WAITING") {
-            connection.emit<EmitTypes>("create-processes-message", `[ERROR] ${_username} is already running...`);
-            return;
-          }
-          else {
-            botUsernames.push(_username)
-          }
-        }
-        else {
-          botUsernames.push(_username);
-        }
-      });
-      // if array length is 0 that means all the provided usernames are running
-      if (botUsernames.length === 0) {
-        connection.emit<EmitTypes>("create-processes-message", `[ERROR] All the provided usernames are already running.`);
-        return;
-      }
-      // assign it to the usernames
-      data.formData.usernames = botUsernames;
-      data.formData.usernames.forEach((_username: string, index: number) => {
-        // check if process with this username exists
-        const _process = new Process(
-          data.formData.devices[index],
-          _username,
-          data.membership[index],
-          data.status,
-          "",
-          0,
-          0,
-          0,
-          ConfigRows,
-          SessionConfigSkeleton,
-          SessionProfileSkeleton,
-          0,
-          data.scheduled,
-          data.formData.jobs,
-          data.formData.config_name ? data.formData.config_name : "config.yml",
-          Date.now(),
-        );
-        names.set(_process.username, _process.status);
-        const { usernames, config_name, devices, jobs, ...rest } = data.formData;
-        // process added to pool, now start it
-        startBotChecks({ username: usernames[index], config_name: config_name ? config_name : "config.yml", device: devices[index], jobs: jobs, ...rest }, _process);
-        setTimeout(() => {
-          // start bot
-          const command: string = os.platform() === "win32" ? "python" : "python3";
-          const cmd: ChildProcessWithoutNullStreams = spawn(`${command} ${path.join(process.cwd(),
-            'scripts', 'start_bot.py',)
-            }`,
+          const command: string =
+            os.platform() === "win32" ? "python" : "python3";
+          const cmd: ChildProcessWithoutNullStreams = spawn(
+            `${command} ${path.join(process.cwd(), "scripts", "start_bot.py")}`,
             { shell: true }
           );
-          const _startBotData: { username: string, config_name: ConfigNames } = {
+          const _startBotData = {
             username: _process.username,
-            config_name: _process.configFile
+            config_name: _process.configFile,
           };
           cmd.stdin.write(JSON.stringify(_startBotData));
           cmd.stdin.end();
-          cmd.stderr.on("data", (chunk: string | Buffer) => {
-            const output = chunk.toString('utf-8').split("\n").map((line: string) => line).join("\n");
-            checkOutputCrashes(output, _process);
-            checkBotFinished(output, _process);
-            checkOutputWarnings(output, _process);
-            checkOutputErrors(output, _process);
-            checkOutputLogs(output, _process);
-            checkOutputSleeping(output, _process);
-            checkOutputCritical(output, _process);
-            processes.map((proc: Process) => {
-              if (proc.username === _process.username) {
-                proc = _process;
-              }
-              else return proc;
-            })
-            names.set(_process.username, _process.status);
-          });
-          cmd.stdout.on("data", (chunk: string | Buffer) => {
-            const output = chunk.toString('utf-8').split("\n").map((line: string) => line).join("\n");
-            if (_process.result.includes(output)) return;
-            checkOutputCrashes(output, _process);
-            checkBotFinished(output, _process);
-            checkOutputWarnings(output, _process);
-            checkOutputErrors(output, _process);
-            checkOutputLogs(output, _process);
-            checkOutputSleeping(output, _process);
-            checkOutputCritical(output, _process);
-            processes.map((proc: Process) => {
-              if (proc.username === _process.username) {
-                proc = _process;
-              }
-              else return proc;
-            });
-            names.set(_process.username, _process.status);
-          });
-          sessions.set(_process.username, _process.session);
-          processes.push(_process);
-          return;
-        }, 300);
-      })
-    })
-    // Get All Processes
-    connection.on<EventTypes>("get-processes", (status?: "RUNNING" | "WAITING" | "STOPPED" | "FINISHED") => {
-      // message in this case is the username and device id
-      if (status && status.trim() === "") {
-        // get all processes with this status
-        const ps = processes.filter((p) => p.status === status);
-        connection.emit<EmitTypes>("get-processes-message", ps);
+          this.names.set(_process.username, _process.status);
+          this.sessions.set(_process.username, _process.session);
+          this.processes.push(_process);
+          setTimeout(() => {
+            connection.emit<EmitTypes>(
+              "start-process-again-message",
+              "Success."
+            );
+          }, 1000 * 1.3);
+        } else {
+          setTimeout(() => {
+            connection.emit<EmitTypes>(
+              "start-process-again-message",
+              "[ERROR] Process is running !"
+            );
+          }, 1000 * 1.3);
+        }
         return;
       }
-      // 1. Get Session Data
-      processes.map((_process: Process) => {
-        const getPidsPath: string = path.join(process.cwd(), 'scripts', 'get_pids.py');
-        const getPidsCommand: string = os.platform() === "win32" ? "python" : "python3";
-        const getPidsCmd: ChildProcessWithoutNullStreams = spawn(`${getPidsCommand} ${getPidsPath}`, { shell: true });
-        getPidsCmd.stdout.on('data', (data: string | Buffer) => {
-          const result: string = data.toString('utf-8');
-          if (result.includes("--config C:\\Users\\Ermisa\\Documents\\repos\\Sinteza\\server\\accounts")) {
-            const results: string[] = result.split("\n");
-            results.forEach((res: string) => {
-              if (res.includes(`${path.join(process.cwd(), 'Bot', 'run.py')} --config ${path.join(process.cwd(), 'accounts', _process.username)}`)) {
-                const fResult: string[] = res.split(" ").filter(el => el);
-                const _pid = fResult[fResult.length - 1].replace("\r", "");
-                _process.pid = _pid;
-              }
-            });
-          }
+    );
+
+    // Remove Schedule
+    connection.on<EventTypes>("remove-schedule", (_username: string) => {
+      if (this.schedules.has(_username)) {
+        const proc: Process | undefined = this.processes.find(
+          (_p: Process) => _p.username === _username
+        );
+        if (proc) {
+          clearTimeout(this.schedules.get(_username));
+          proc.status = "STOPPED";
+          proc.scheduled = false;
+          this.names.set(_username, "STOPPED");
+          this.schedules.delete(_username);
+          this.processes.splice(this.processes.indexOf(proc), 1);
+          this.processes.push(proc);
+          connection.emit<EventTypes>(
+            "remove-schedule",
+            `[INFO] Removed schedule for ${_username}`
+          );
+          return;
+        }
+        connection.emit<EventTypes>(
+          "remove-schedule",
+          `[ERROR] Could not find bot for ${_username}`
+        );
+        return;
+      } else {
+        connection.emit<EventTypes>(
+          "remove-schedule",
+          "[INFO] Bot is not scheduled !"
+        );
+        return;
+      }
+    });
+    // Create multiple processes
+    connection.on<EventTypes>("create-processes", (data: BulkWriteData) => {
+      if (data.formData.usernames.length === 0)
+        return connection.emit<EmitTypes>(
+          "create-processes-message",
+          "[ERROR] No usernames provided !"
+        );
+      if (data.formData.devices.length === 0)
+        return connection.emit<EmitTypes>(
+          "create-processes-message",
+          "[ERROR] No devices provided !"
+        );
+      if (data.formData.usernames.length !== data.formData.devices.length)
+        return connection.emit<EmitTypes>(
+          "create-processes-message",
+          "[ERROR] Usernames and devices length does not match !"
+        );
+      if (data.formData.usernames.length !== data.membership.length)
+        return connection.emit<EmitTypes>(
+          "create-processes-message",
+          "[ERROR] Usernames and memberships length does not match !"
+        );
+
+      // check if process already exists
+      const proc: Process | undefined = this.processes.find(
+        (_p: Process) => _p.username === data.formData.usernames[0]
+      );
+      if (proc) {
+        // process exists
+        this.processes.splice(this.processes.indexOf(proc), 1);
+      }
+      // worker action here
+      const toBeCreated: number = data.formData.usernames.length;
+      const chunks: CreateProcessData[][] = [];
+      const _ps_: CreateProcessData[] = [];
+      for (let i = toBeCreated; i > 0; i--) {
+        const obj: CreateProcessData = {
+          scheduled: false,
+          startsAt: undefined,
+          startTime: undefined,
+          status: "RUNNING",
+          membership: data.membership[toBeCreated - i],
+          jobs: data.formData.jobs,
+          formData: {
+            username: data.formData.usernames[toBeCreated - i],
+            device: data.formData.devices[toBeCreated - i],
+            jobs: data.formData.jobs,
+            config_name: data.formData.config_name,
+            "speed-multiplier": data.formData["speed-multiplier"],
+            "truncate-sources": data.formData["truncate-sources"],
+            "blogger-followers": data.formData["blogger-followers"],
+            "hashtag-likers-top": data.formData["hashtag-likers-top"],
+            "working-hours": data.formData["working-hours"],
+          },
+        };
+        _ps_.push(obj);
+      }
+      const _threads: number = 3;
+      // split array into chunks
+      for (let i = _threads; i > 0; i--) {
+        chunks.push(_ps_.splice(0, Math.ceil(_ps_.length / i)));
+      }
+      chunks.forEach((data: CreateProcessData[]) => {
+        const worker = new Worker("./workers/start_worker.js", {
+          workerData: {
+            path: "./workers/start_worker.ts",
+            data: JSON.stringify(data),
+          },
         });
-        const platformCommand: string = os.platform() === "win32" ? "findstr /i" : "egrep"
+        worker.on("message", (result: { processes: ProcessSkeleton[] }) => {
+          result.processes.map((p: ProcessSkeleton) => {
+            const _process: Process = new Process(
+              {
+                _id: p._device.id,
+                _name: p._device.name,
+                _battery: p._device.battery,
+              },
+              p._user.username,
+              p._user.membership,
+              "RUNNING",
+              "",
+              0,
+              0,
+              0,
+              ConfigRows,
+              SessionConfigSkeleton,
+              SessionProfileSkeleton,
+              0,
+              p._scheduled,
+              p._jobs,
+              p._configFile,
+              Date.now()
+            );
+            // check if process already exists
+            const proc: Process | undefined = this.processes.find(
+              (_p: Process) => _p.username === _process.username
+            );
+            // set status in map
+            this.names.set(_process.username, _process.status);
+            if (proc) {
+              // update process
+              this.processes.map((p: Process) => {
+                if (p.username === _process.username) {
+                  p = _process;
+                }
+                return p;
+              });
+            } else {
+              // add it to pool if it does not exits
+              this.processes.push(_process);
+            }
+          });
+        });
+      });
+
+      setTimeout(() => {
+        connection.emit<EmitTypes>(
+          "create-processes-message",
+          "[INFO] Crated processes."
+        );
+      }, 1000 * 2.5);
+    });
+
+    // Get All Processes
+    connection.on<EventTypes>("get-processes", () => {
+      if (this.processes.length === 0) {
+        connection.emit<EmitTypes>("get-processes-message", []);
+        return;
+      }
+      this.processes.map((p: Process) => {
+        const _logPath: string = path.join(
+          process.cwd(),
+          "accounts",
+          p.username,
+          `${p.username}.log`
+        );
+        // read username.log file
+        try {
+          const data: string = readFileSync(_logPath, "utf8");
+          this.results.set(p.username, data);
+          data
+            .split("\n")
+            .map((line: string) => line)
+            .forEach((line: string) => {
+              if (line.trim() === "") return;
+              else if (line.includes("Next session will start at:")) {
+                p.status = "WAITING";
+                return;
+              } else if (line.includes(`Hello`)) {
+                const c = line.split(" ").filter((el) => el);
+                const followers = parseInt(c[6]);
+                const following = parseInt(c[9]);
+                p.followers = followers;
+                p.following = following;
+                return;
+              } else if (line.includes("Total Crashes: 1/5")) {
+                p.total_crashes = 1;
+                return;
+              } else if (line.includes("Finished.")) {
+                p.status = "FINISHED";
+                return;
+              } else if (line.includes("ERROR | Reached crashes limit.")) {
+                p.status = "STOPPED";
+                return;
+              } else if (line.includes("Total Crashes: 2/5")) {
+                p.total_crashes = 2;
+                return;
+              } else if (line.includes("Total Crashes: 3/5")) {
+                p.total_crashes = 3;
+                return;
+              } else if (line.includes("Total Crashes: 4/5")) {
+                p.total_crashes = 4;
+                return;
+              } else if (line.includes("Total Crashes: 5/5")) {
+                p.total_crashes = 5;
+                return;
+              } else if (
+                line.includes(
+                  "This kind of exception will stop the bot (no restart)."
+                )
+              ) {
+                p.total_crashes = 5;
+                return;
+              } else if (line.includes("RuntimeError: USB device")) {
+                p.total_crashes = 5;
+                p.status = "STOPPED";
+                return;
+              } else if (line.includes("adbutils.errors.AdbError: device")) {
+                p.total_crashes = 5;
+                p.status = "STOPPED";
+                return;
+              } else return;
+            });
+          p.result = data;
+        } catch (err) {
+          console.log(err);
+        }
+        return p;
+      });
+      setTimeout(() => {
+        connection.emit<EmitTypes>("get-processes-message", this.processes);
+        return;
+      }, 1000 * 1);
+    });
+
+    // Get Devices Battery
+    connection.on<EventTypes>("get-devices-battery", () => {
+      this.processes.map((_process: Process) => {
+        const platformCommand: string =
+          os.platform() === "win32" ? "findstr /i" : "egrep";
         const c = `adb -s ${_process.device.id} shell dumpsys battery | ${platformCommand} "level: "`;
-        let _battery: string = "X";
         exec(c, (error: ExecException | null, stdout: string) => {
           if (error) {
-            console.log({ error });
+            if (error.message.includes("device offline")) {
+              _process.device.battery = "X";
+              // set process to crashed.
+              _process.status = "STOPPED";
+              _process.total_crashes = 5;
+              return;
+            }
             return;
           }
           if (stdout.includes(`device '${_process.device.id}' not found`)) {
-            _battery = "X";
+            _process.device.battery = "X";
+            return;
           }
-          else _battery = `${stdout.trim().split(":")[1]}%`.trim();
+          _process.device.battery = `${stdout.trim().split(":")[1]}%`.trim();
+          return;
         });
-        setTimeout(() => {
-          _process.device.battery = _battery;
-        }, 200);
-        const data: ServerActionSessionData = { username: _process.username, followers_now: _process.followers, following_now: _process.following };
-        const _path: string = path.join(process.cwd(), 'scripts', 'sessions.py');
-        const command: string = os.platform() === "win32" ? "python" : "python3";
-        const cmd: ChildProcessWithoutNullStreams = spawn(`${command} ${_path}`, { shell: true });
-        cmd.stdin.write(JSON.stringify(data));
-        cmd.stdin.end();
-        cmd.stdout.on("data", (data: string | Buffer) => {
-          // convert to string
-          const fData = data.toString('utf-8');
-          if (fData.includes("[ERROR] You have to run the bot at least once to generate a report!") ||
-            fData.includes("[ERROR] If you want to use telegram_reports,")) {
-            sessions.set(_process.username, ConfigRows);
-            return;
-          }
-          else {
-            const pData: ConfigRowsSkeleton = JSON.parse(fData) as ConfigRowsSkeleton;
-            sessions.set(_process.username, pData);
-            return;
-          }
-        });
-        cmd.stderr.on("data", (data: string | Buffer) => {
-          // convert to string
-          const fData = data.toString('utf-8');
-          if (fData.includes("[ERROR] You have to run the bot at least once to generate a report!") ||
-            fData.includes("[ERROR] If you want to use telegram_reports")) {
-            sessions.set(_process.username, ConfigRows);
-            return;
-          }
-          else {
-            const pData: ConfigRowsSkeleton = JSON.parse(fData) as ConfigRowsSkeleton;
-            sessions.set(_process.username, pData);
-            return;
-          }
-        });
-        const session: ConfigRowsSkeleton | undefined = sessions.get(_process.username);
-        _process.session = session ? session : ConfigRows;
         return _process;
       });
-      setTimeout(() => {
-        connection.emit<EmitTypes>("get-processes-message", processes);
-        return;
-      }, 350);
     });
-
-    // Get One Process
-    connection.on<EventTypes>("get-process", (props: { username: string, deviceId: string }) => {
-      const p = processes.filter((p) => p.username === props.username && p.device.id === props.deviceId)[0];
-      if (p) {
-        connection.emit<EmitTypes>("get-process-message", p);
-        return;
-      }
-      else connection.emit<EmitTypes>("get-process-message", "Success !");
-    })
 
     // Create Process
     connection.on<EventTypes>("create-process", (data: CreateProcessData) => {
-      if (names.has(data.formData.username)) {
-        if (names.get(data.formData.username) === "RUNNING" || names.get(data.formData.username) === "WAITING") {
-          connection.emit<EmitTypes>("create-process-message", "[ERROR] Process is already running...");
+      if (data.formData.username === "")
+        return connection.emit<EmitTypes>(
+          "create-process-message",
+          "[ERROR] Username cannot be empty !"
+        );
+      if (typeof data.formData.device === "undefined")
+        return connection.emit<EmitTypes>(
+          "create-process-message",
+          "[ERROR] Device cannot be empty !"
+        );
+      if (this.names.has(data.formData.username)) {
+        if (
+          this.names.get(data.formData.username) === "RUNNING" ||
+          this.names.get(data.formData.username) === "WAITING"
+        ) {
+          connection.emit<EmitTypes>(
+            "create-process-message",
+            "[ERROR] Process is already running..."
+          );
           return;
         }
       }
+      // check device if it is running another process
+      const _device: Device | undefined = this.devices.find(
+        (d: Device) => d.id === data.formData.device._id
+      );
+      if (_device) {
+        if (_device.process) {
+          connection.emit<EmitTypes>(
+            "create-process-message",
+            "[ERROR] Device is already running another process..."
+          );
+          return;
+        }
+      }
+
       if (data.scheduled) {
-        const p: Process | undefined = processes.find((p) => p.username === data.formData.username);
+        const p: Process | undefined = this.processes.find(
+          (p) => p.username === data.formData.username
+        );
         if (p) {
           // process exists
-          processes.splice(processes.indexOf(p), 1);
+          this.processes.splice(this.processes.indexOf(p), 1);
         }
         this.handleProcessSchedule(data);
-      }
-      else {
+        connection.emit<EmitTypes>(
+          "create-process-message",
+          "[INFO] Scheduled process."
+        );
+      } else {
         this.handleCreateProcess(data);
+        connection.emit<EmitTypes>(
+          "create-process-message",
+          "[INFO] Created Process."
+        );
       }
     });
 
-    // Update Process
-    connection.on<EventTypes>("update-process", (_process: Process) => {
-      this.updateProcesses(_process);
-      connection.emit<EmitTypes>("update-process-message", processes);
-    });
-
-    // Update all processes
-    connection.on<EventTypes>("update-processes", (_processes: Process[]) => {
-      _processes.map((_process: Process) => {
-        this.updateProcesses(_process);
-      });
-      connection.emit<EmitTypes>("update-processes-message", processes);
-    })
-
-    // remove process
+    // Remove process
     connection.on<EventTypes>("remove-process", (_username: string) => {
-      if (names.has(_username)) {
-        if (names.get(_username) === "RUNNING" || names.get(_username) === "WAITING") {
-          connection.emit<EmitTypes>("create-process-message", "[ERROR] Process is already running...");
+      if (this.names.has(_username)) {
+        if (
+          this.names.get(_username) === "RUNNING" ||
+          this.names.get(_username) === "WAITING"
+        ) {
+          connection.emit<EmitTypes>(
+            "create-process-message",
+            "[ERROR] Process is already running..."
+          );
           return;
         }
       }
-      const p: Process | undefined = processes.find((p) => p.username === _username);
+      const p: Process | undefined = this.processes.find(
+        (p) => p.username === _username
+      );
       if (p) {
         // process exists
-        processes.splice(processes.indexOf(p), 1);
-        connection.emit<EmitTypes>("remove-process-message", "[INFO] Process removed.");
+        this.processes.splice(this.processes.indexOf(p), 1);
+        connection.emit<EmitTypes>(
+          "remove-process-message",
+          "[INFO] Process removed."
+        );
         return;
       }
       // process does not exist
       else {
-        connection.emit<EmitTypes>("remove-process-message", "[ERROR] Could not find process.");
+        connection.emit<EmitTypes>(
+          "remove-process-message",
+          "[ERROR] Could not find process."
+        );
         return;
       }
+    });
+
+    // Get Sessions
+    connection.on<EventTypes>("get-sessions", () => {
+      // spawn workers here
+      const _threads: number = 3;
+      const chunks: ServerActionSessionData[][] = [];
+      const _ps_: ServerActionSessionData[] = [];
+      for (const process of this.processes) {
+        // create data
+        const data: ServerActionSessionData = {
+          username: process.username,
+          followers_now: process.followers,
+          following_now: process.following,
+        };
+        _ps_.push(data);
+      }
+      for (let i = _threads; i > 0; i--) {
+        chunks.push(_ps_.splice(0, Math.ceil(_ps_.length / i)));
+      }
+      chunks.forEach((data: ServerActionSessionData[]) => {
+        const worker = new Worker("./workers/get_session.js", {
+          workerData: {
+            path: "./workers/get_session.ts",
+            data,
+          },
+        });
+        worker.on("message", (result: Array<WorkerSessions>) => {
+          this.processes.map((p: Process) => {
+            const _session_: WorkerSessions | undefined = result.find(
+              (session: WorkerSessions) => session.username === p.username
+            );
+            if (_session_) {
+              p.session = _session_.session
+                ? _session_.session
+                : {
+                    ...ConfigRows,
+                    id: "",
+                    "overview-username": p.username,
+                    "overview-status": p.status,
+                    "overview-followers": p.followers.toString(),
+                    "overview-following": p.following.toString(),
+                  };
+            }
+          });
+        });
+      });
+
+      setTimeout(() => {
+        connection.emit<EmitTypes>(
+          "get-sessions-message",
+          "[INFO] Got sessions."
+        );
+      }, 1000 * 3.7);
     });
 
     // Stop process
     connection.on<EventTypes>("stop-process", (_username: string) => {
-      const p = processes.find((process) => process.username === _username);
+      const p = this.processes.find(
+        (process) => process.username === _username
+      );
       if (p) {
-        if(p.pid){
-          try{
-            execSync(`taskkill /F /PID ${p.pid}`);
-          }
-          catch (e){
-            return;
-          }
+        try {
+          // kill atx agent and disconnect device
+          execSync(`adb -s ${p.device.id} shell pkill atx-agent`);
+          execSync(`adb -s ${p.device.id} usb detach`);
+          setTimeout(() => {
+            execSync(`adb -s ${p.device.id} usb detach`);
+          }, 1000 * 2);
+        } catch (e) {
+          console.log({ e });
+          connection.emit<EmitTypes>(
+            "stop-process-message",
+            "[ERROR] Something unexpected happened."
+          );
+          return;
         }
-        processes.map((_p: Process) => {
+        this.processes.map((_p: Process) => {
           if (p.username === _p.username) {
             _p.status = "STOPPED";
           }
         });
-        names.set(_username, "STOPPED");
+        this.names.set(_username, "STOPPED");
         this.relations.delete(_username);
-        connection.emit<EmitTypes>("stop-process-message", "[INFO] Stopped process");
+        connection.emit<EmitTypes>(
+          "stop-process-message",
+          "[INFO] Stopped process"
+        );
         return;
-      }
-      else {
-        connection.emit<EmitTypes>("stop-process-message", "[ERROR] Process does not have a spawn shell...");
+      } else {
+        connection.emit<EmitTypes>(
+          "stop-process-message",
+          "[ERROR] Could not find process. Maybe refresh page ?"
+        );
         return;
       }
     });
 
+    // Get Device
     connection.on<EventTypes>("get-device", (deviceId: string) => {
-      const device = devices.find((d) => d.id === deviceId);
+      const device = this.devices.find((d) => d.id === deviceId);
       if (device) {
-        connection.emit<EmitTypes>("get-device-message", "[ERROR] Device not found !");
+        connection.emit<EmitTypes>(
+          "get-device-message",
+          "[ERROR] Device not found !"
+        );
         return;
-      }
-      else {
+      } else {
         connection.emit<EmitTypes>("get-device-message", device);
         return;
       }
-    })
+    });
 
-    // get all devices
+    // Get all devices
     connection.on<EventTypes>("get-devices", () => {
       let output: string = "";
-      spawn('adb devices', { shell: true }).stdout.on('data', (_output: string | Buffer) => {
-        output = _output.toString('utf-8').replace("List of devices attached", "").replace("device", "").replace("\t", "")
-        return;
-      })
+      spawn("adb devices", { shell: true }).stdout.on(
+        "data",
+        (_output: string | Buffer) => {
+          output = _output
+            .toString("utf-8")
+            .replace("List of devices attached", "")
+            .replace("device", "")
+            .replace("\t", "");
+          return;
+        }
+      );
       setTimeout(() => {
-        const ids: string[] = output.trim()
+        const ids: string[] = output
+          .trim()
           .split("\n")
           .map((d) => {
             const temp = d.replace("\r", "");
             const _t_stripped_temp = temp.replace("\t", "");
             return _t_stripped_temp.replace("device", "");
           });
-        const platformCommand: string = os.platform() === "win32" ? "findstr /i" : "egrep"
+        const platformCommand: string =
+          os.platform() === "win32" ? "findstr /i" : "egrep";
         ids.map((id: string) => {
-          Object.entries(DevicesList).forEach(([key, value]: [key: string, value: string]) => {
-            if (devices.find((_d: Device) => _d.id === key)) return;
-            if (key === id) {
-              const command = `adb -s ${key} shell dumpsys battery | ${platformCommand} "level: "`;
-              let _battery: string = "X";
-              exec(command, (error: ExecException | null, stdout: string) => {
-                if (error) {
-                  console.log({ error });
-                  return;
-                }
-                if (stdout.includes(`device '${key}' not found`)) {
-                  _battery = "X";
-                }
-                else _battery = `${stdout.trim().split(":")[1]}%`.trim();
-              });
-              const a: Process | undefined = processes.find((_p: Process) => _p.device.id === key && _p.device.name === value);
-              devices.push(new Device(key, value, _battery, a ? { username: a.username, configFile: a.configFile } : null));
+          Object.entries(DevicesList).forEach(
+            ([key, value]: [key: string, value: string]) => {
+              if (this.devices.find((_d: Device) => _d.id === key)) return;
+              if (key === id) {
+                // command to get battery
+                const command = `adb -s ${key} shell dumpsys battery | ${platformCommand} "level: "`;
+                let _battery: string = "X";
+                // get device battery
+                exec(command, (error: ExecException | null, stdout: string) => {
+                  if (error) {
+                    console.log({ error });
+                    return;
+                  }
+                  if (stdout.includes(`device '${key}' not found`)) {
+                    _battery = "X";
+                  } else _battery = `${stdout.trim().split(":")[1]}%`.trim();
+                });
+                const a: Process | undefined = this.processes.find(
+                  (_p: Process) =>
+                    _p.device.id === key && _p.device.name === value
+                );
+                this.devices.push(
+                  new Device(
+                    key,
+                    value,
+                    _battery,
+                    a
+                      ? { username: a.username, configFile: a.configFile }
+                      : null
+                  )
+                );
+              }
             }
-          });
+          );
         });
       }, 100);
       setTimeout(() => {
-        connection.emit<EmitTypes>("get-devices-message", devices)
+        connection.emit<EmitTypes>("get-devices-message", this.devices);
       }, 300);
       return;
     });
@@ -656,4 +863,3 @@ export class Processes {
     });
   }
 }
-

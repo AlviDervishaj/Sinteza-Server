@@ -2,6 +2,7 @@
 module.exports = {
   extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended-type-checked'],
   parser: '@typescript-eslint/parser',
+  ignorePatterns: ["workers/*.js", ".eslintrc.js"],
   plugins: ['@typescript-eslint'],
   parserOptions: {
     project: './tsconfig.json',

