@@ -5,6 +5,7 @@ import {
   spawn,
   execSync,
 } from "node:child_process";
+import { chunks } from "../helpers/generator";
 import { Socket } from "socket.io";
 import {
   ConfigNames,
@@ -382,7 +383,6 @@ export class Processes {
       }
       // worker action here
       const toBeCreated: number = data.formData.usernames.length;
-      const chunks: CreateProcessData[][] = [];
       const _ps_: CreateProcessData[] = [];
       for (let i = toBeCreated; i > 0; i--) {
         const obj: CreateProcessData = {
@@ -407,11 +407,12 @@ export class Processes {
         _ps_.push(obj);
       }
       const _threads: number = 3;
+      const _chunks: CreateProcessData[][] = [...chunks(_ps_, _threads)];
       // split array into chunks
       for (let i = _threads; i > 0; i--) {
-        chunks.push(_ps_.splice(0, Math.ceil(_ps_.length / i)));
+        _chunks.push(_ps_.splice(0, Math.ceil(_ps_.length / i)));
       }
-      chunks.forEach((data: CreateProcessData[]) => {
+      _chunks.forEach((data: CreateProcessData[]) => {
         const worker = new Worker("./workers/start_worker.js", {
           workerData: {
             path: "./workers/start_worker.ts",
@@ -469,7 +470,7 @@ export class Processes {
           "create-processes-message",
           "[INFO] Crated processes."
         );
-      }, 1000 * 2.5);
+      }, 1000 * 4);
     });
 
     // Get All Processes
@@ -682,7 +683,6 @@ export class Processes {
     connection.on<EventTypes>("get-sessions", () => {
       // spawn workers here
       const _threads: number = 3;
-      const chunks: ServerActionSessionData[][] = [];
       const _ps_: ServerActionSessionData[] = [];
       for (const process of this.processes) {
         // create data
@@ -693,10 +693,11 @@ export class Processes {
         };
         _ps_.push(data);
       }
+      const _chunks: ServerActionSessionData[][] = [...chunks(_ps_, _threads)];
       for (let i = _threads; i > 0; i--) {
-        chunks.push(_ps_.splice(0, Math.ceil(_ps_.length / i)));
+        _chunks.push(_ps_.splice(0, Math.ceil(_ps_.length / i)));
       }
-      chunks.forEach((data: ServerActionSessionData[]) => {
+      _chunks.forEach((data: ServerActionSessionData[]) => {
         const worker = new Worker("./workers/get_session.js", {
           workerData: {
             path: "./workers/get_session.ts",
@@ -740,11 +741,11 @@ export class Processes {
       if (p) {
         try {
           // kill atx agent and disconnect device
-          execSync(`adb -s ${p.device.id} shell pkill atx-agent`);
-          execSync(`adb -s ${p.device.id} usb detach`);
+          execSync(`python ./Bot/turn_off_screen.py ${p.device.id}`);
           setTimeout(() => {
-            execSync(`adb -s ${p.device.id} usb detach`);
-          }, 1000 * 2);
+            execSync(`python ./Bot/turn_off_screen.py ${p.device.id}`);
+          }, 1000 * 2.1);
+          execSync(`python ./Bot/turn_off_screen.py ${p.device.id}`);
         } catch (e) {
           console.log({ e });
           connection.emit<EmitTypes>(
@@ -856,6 +857,15 @@ export class Processes {
       }, 300);
       return;
     });
+
+    connection.on<EventTypes>("preview-device", (deviceId: string) => {
+      const cmd: ChildProcessWithoutNullStreams = spawn(`scrcpy -s ${deviceId}`, {
+        shell: true,
+      });
+      setTimeout(() => {
+        connection.emit<EmitTypes>("preview-device-message", this.devices);
+      }, 300);
+    })
     // handle close event
     connection.on("close", () => {
       connection.disconnect();
