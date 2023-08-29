@@ -79,7 +79,7 @@ class InteractHashtagLikers(Plugin):
             ) = self.session_state.check_limit(limit_type=self.session_state.Limit.ALL)
             limit_reached = active_limits_reached or actions_limit_reached
             self.state = State()
-            if type(source) == list and source[0] != "#":
+            if source[0] != "#":
                 source = "#" + source
             logger.info(
                 f"Handle {emoji.emojize(source, use_aliases=True)}",

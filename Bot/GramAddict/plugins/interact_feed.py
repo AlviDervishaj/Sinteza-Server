@@ -112,6 +112,7 @@ class InteractOwnFeed(Plugin):
         pm_percentage,
         interact_percentage,
     ):
+
         interaction = partial(
             interact_with_user,
             my_username=self.session_state.my_username,

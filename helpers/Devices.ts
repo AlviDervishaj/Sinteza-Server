@@ -77,6 +77,5 @@ export const DevicesList = {
   R7ST405PFVZ: "B23",
   R9RTB05MR3Y: "A15",
   R9ZW305K08Z: "B24",
-  ca2937e9: "Redmi",
   R7AT30TZY2R: "Testing",
 };
