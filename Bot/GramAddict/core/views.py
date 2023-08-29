@@ -1,6 +1,7 @@
 import datetime
 import logging
 import re
+import json
 from enum import Enum, auto
 from random import choice, randint, uniform
 from time import sleep
@@ -2018,11 +2019,64 @@ class FollowingView:
             if user_row.exists(Timeout.MEDIUM):
                 username_row = user_row.child(index=1).child().child().get_text()
                 if username_row != username:
+                    __username__ = args.username
                     logger.error(f"Cannot find {username} in following list.")
+                    with open(
+                        f"accounts/{__username__}/interacted_users.json", "r"
+                    ) as f:
+                        data = json.load(f)
+
+                    available_usernames = data.keys()
+                    _toBeDeletedUsername = None
+                    for uname in available_usernames:
+                        if uname.startswith(username):
+                            _toBeDeletedUsername = uname
+                            break
+                    if _toBeDeletedUsername is not None:
+                        with open(
+                            f"accounts/{__username__}/not_found_interacted_users.txt",
+                            "a+",
+                        ) as f:
+                            obj = {
+                                "username": _toBeDeletedUsername,
+                                **data[_toBeDeletedUsername],
+                            }
+                            f.write(f"{obj}\n")
+                        del data[_toBeDeletedUsername]
+                        with open(
+                            f"accounts/{__username__}/interacted_users.json", "w"
+                        ) as f:
+                            json.dump(data, f, indent=2)
+                        return False
                     return False
             else:
-                logger.error("Cannot find following list.")
+                logger.error(f"Cannot find {username} in following list. / blocked")
+                __username__ = args.username
+                with open(f"accounts/{__username__}/interacted_users.json", "r") as f:
+                    data = json.load(f)
+                available_usernames = data.keys()
+                _toBeDeletedUsername = ""
+                for uname in available_usernames:
+                    if uname.startswith(username):
+                        _toBeDeletedUsername = uname
+                        break
+                if _toBeDeletedUsername is not None:
+                    with open(
+                        f"accounts/{__username__}/not_found_interacted_users.txt", "a+"
+                    ) as f:
+                        obj = {
+                            "username": _toBeDeletedUsername,
+                            **data[_toBeDeletedUsername],
+                        }
+                        f.write(f"{obj}\n")
+                    del data[_toBeDeletedUsername]
+                    with open(
+                        f"accounts/{__username__}/interacted_users.json", "w"
+                    ) as f:
+                        json.dump(data, f, indent=2)
+                    return False
                 return False
+
         following_button = user_row.child(index=2)
 
         following_status = self._get_following_status(following_button)
@@ -2247,7 +2301,9 @@ class UniversalActions:
                     "Seems that action is blocked. Consider reinstalling Instagram app and be more careful with limits!"
                 )
             account_view = AccountView(device)
-            write_custom_logs.write("Not able to set your app in English! Do it by yourself!")
+            write_custom_logs.write(
+                "Not able to set your app in English! Do it by yourself!"
+            )
             account_view.logout_account(args.username)
             close_instagram(device)
             time_to_sleep = (

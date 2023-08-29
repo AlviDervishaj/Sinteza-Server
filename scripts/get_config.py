@@ -3,7 +3,6 @@ import yaml
 import sys
 import json
 
-
 username = sys.stdin.read()
 def logger(x): return print(x, flush=True)
 

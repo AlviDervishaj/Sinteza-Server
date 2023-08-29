@@ -1,4 +1,4 @@
-from GramAddict.core.plugin_loader import Plugin
+from .core.plugin_loader import Plugin
 
 
 class ExamplePlugin(Plugin):

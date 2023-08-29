@@ -1,4 +1,5 @@
 import sys
+
 import GramAddict.core.device_facade as device_facade
 
 deviceId = sys.argv[1]

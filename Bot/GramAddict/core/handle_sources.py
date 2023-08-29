@@ -207,7 +207,7 @@ def handle_blogger_from_file(
     processed_users = 0
     try:
         for line, username_raw in enumerate(usernames, start=1):
-            username = username_raw.strip()
+            username = username_raw.strip()[0:20]
             can_interact = False
             if current_job == "unfollow-from-file":
                 unfollowed = do_unfollow_from_list(device, username, on_following_list)

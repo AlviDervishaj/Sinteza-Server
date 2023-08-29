@@ -44,7 +44,7 @@ class SendTelegramEndSession:
         if username is None:
             logger.error("You have to specify an username for getting reports!")
             return None
-        statString = f"{username} stopped."
+        statString = f"## {username} stopped."
         try:
             r = telegram_bot_sendtext(statString)
             if r.get("ok"):

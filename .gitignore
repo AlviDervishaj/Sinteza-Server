@@ -11,6 +11,7 @@ env/
 /Bot/.idea
 /Bot/test
 /Bot/.vscode
+/Bot/**/__pycache__
 */*.yml
 */*.json
 *.pyc
